@@ -1,0 +1,105 @@
+//Этот модуль можно свободно распространять, изменять и использовать в своих проектах без указания автора оригинала.
+unit mods;
+
+interface
+ function upd_logic(x,y:integer):boolean;
+ function use_bl(x,y:integer):boolean;
+ function use_e(item,sum,x,y:integer):boolean;
+ procedure drw;
+ function drw_gui:boolean;
+ procedure code;
+ procedure reset_data;
+ procedure save_data;
+ procedure load_data;
+
+implementation
+ uses maps;
+
+ {=========[Блоки с логикой]=========}
+ function upd_logic(x,y:integer):boolean;//Возвращет разрешение на обработку стандартной логики
+  begin
+   //x,y - координаты блока
+   //Пример:
+   //При обновлении блока грязи тот становится травой и на оборот
+   {if map[x,y]=1 then
+    begin
+     map[x,y]:=2;
+    end; else
+   if map[x,y]=2 then
+    begin
+     map[x,y]:=1;
+    end; else}
+   result:=true;
+  end;
+
+ function use_bl(x,y:integer):boolean;//Возвращет разрешение на обработку стандартной логики
+  begin
+   //x,y - координаты курсора
+   //Учитывайте что обновление всех блоков в мире происходит в течении одной секунды
+   //Пример:
+   //При исспользовании блока травы он поедит вправо при условии что там есть свободное место
+   {if map[x,y]=2 then
+    begin
+     if getmap(x+1,y)=0 then
+      begin
+       setmap(2,x+1,y);
+       map[x,y]:=0;
+      end;
+    end; else}
+   result:=true;
+  end;
+
+ function use_e(item,sum,x,y:integer):boolean;//Возвращет разрешение на обработку стандартной логики
+  begin
+   //item - ид передмета который в руке
+   //sum - количество предметов в руке
+   //x,y - координаты курсора
+   //Пример1:
+   //Игрок высоко прыгнет если использует ведро с молоком :D.
+   {if (item=174) and (sum>0) then
+    begin
+     vely:=32;
+    end; else}
+   //Пример2:
+   //Тоже самое, но ведро с молоком станет пустым после использования.
+   {if (inv[invslot].item_i=174) and (inv[invslot].sum_i>0) then
+    begin
+     vely:=32;
+     inv[invslot].item_i=171;
+    end; else}
+   result:=true;
+  end;
+
+ procedure drw;
+  begin
+
+  end;
+
+ function drw_gui:boolean;//Возвращет разрешение на отрисовку стандартного GUI
+  begin
+   result:=true;
+  end;
+
+ procedure code;//Любой код, постоянно выполняется во время игры.
+  begin
+
+  end;
+
+ procedure reset_data;//Выполняется перед созданием мира или загрузкой сохранения
+  begin
+
+  end;
+
+ procedure save_data;//Выполняется после сохранения всех стандартных данных, файл закрывается после выполнения.
+  begin
+
+  end;
+
+ procedure load_data;////Выполняется после загрузки всех стандартных данных, файл закрывается после выполнения.
+  begin
+
+  end;
+
+initialization
+
+end.

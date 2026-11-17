@@ -1,0 +1,398 @@
+unit furnace;
+
+interface
+ const
+  MAX_FURNACE=31;
+  MAX_FURNACE_CELLS=2;
+  
+  ITEM_IN_FIRE=10000;
+
+  FURNACE_IN=0;
+  FURNACE_FUEL=1;
+  FURNACE_OUT=2;
+
+  FURNACE_ERROR=-1;
+
+ procedure setMaxFuel(i:integer);
+ procedure setMaxRecipes(i:integer);
+ procedure initFuel(id, item, time:integer);
+ procedure initRecipe(id, in_item, out_item:integer);
+
+ function getTime:integer;
+ function startFuelTime(furid:integer):integer;
+ function endFuelTime(furid:integer):integer;
+ function startProgTime(furid:integer):integer;
+ function endProgTime(furid:integer):integer;
+ function FuelTime(i:integer):integer;
+ function ProgTime(i:integer):integer;
+
+ function GetFurItem(cell, furid:integer;):integer;
+ procedure SetFurItem(val, cell, furid:integer;);
+ function GetFurSum(cell, furid:integer;):integer;
+ procedure SetFurSum(val, cell, furid:integer;);
+
+ function CreateFurnace(x, y:integer;):integer;
+  procedure DestroyFurnace(x, y:integer);
+  procedure resetData;
+  procedure UpdateFurnaces;
+
+ function furnaceBurn(i:integer):boolean;
+ function itemBurn(i:integer):boolean;
+
+implementation
+ uses maps, drop, items_store, items;
+ var
+  furnace_b: array [0..MAX_FURNACE] of boolean;
+  furnace_item, furnace_sum: array [0..MAX_FURNACE, 0..MAX_FURNACE_CELLS] of integer;
+  furnace_fstart, furnace_ftime, furnace_prstart: array [0..MAX_FURNACE] of integer;
+  fur_upd_t:integer;
+
+  time:integer;
+  maxFuel, maxRecipe:integer;
+  fuel_item, fuel_time: array [0..0] of integer;
+  recept_in, recept_out: array [0..0] of integer;
+
+ function getTime:integer;
+  begin
+   getTime:=time;
+  end;
+
+ procedure UpdateTime;
+  begin
+   time:=getRelativeTimeMs;
+  end;
+
+ function startFuelTime(i:integer):integer;
+  begin
+   startFuelTime:=furnace_fstart[i];
+  end;
+
+ function endFuelTime(i:integer):integer;
+  begin
+   endFuelTime:=furnace_fstart[i]+furnace_ftime[i];
+  end;
+
+ function FuelTime(i:integer):integer;
+  begin
+   FuelTime:=furnace_ftime[i];
+  end;
+
+ procedure updateFuelTime(fueltime, i:integer);
+  begin
+   furnace_fstart[i]:=getTime;
+   furnace_ftime[i]:=fueltime;
+  end;
+
+ function startProgTime(i:integer):integer;
+  begin
+   startProgTime:=furnace_prstart[i];
+  end;
+
+ function endProgTime(i:integer):integer;
+  begin
+   endProgTime:=furnace_prstart[i]+ITEM_IN_FIRE;
+  end;
+
+ function ProgTime(i:integer):integer;
+  begin
+   ProgTime:=ITEM_IN_FIRE;
+  end;
+
+ procedure setMaxFuel(i:integer;);
+  begin
+   maxFuel:=i;
+   i:=i+1;
+   bytecode
+    iload 0;
+    newarray 10;
+    putstatic field 'furnace', 'fuel_item', '[I';
+   end;
+   bytecode
+    iload 0;
+    newarray 10;
+    putstatic field 'furnace', 'fuel_time', '[I';
+   end;
+  end;
+
+ procedure setMaxRecipes(i:integer);
+  begin
+   maxRecipe:=i;
+   i:=i+1;
+   bytecode
+    iload 0;
+    newarray 10;
+    putstatic field 'furnace', 'recept_in', '[I';
+   end;
+   bytecode
+    iload 0;
+    newarray 10;
+    putstatic field 'furnace', 'recept_out', '[I';
+   end;
+  end;
+
+ procedure initFuel(id, item, time:integer);
+  begin
+   fuel_item[id]:=item;
+   fuel_time[id]:=time;
+  end;
+
+ procedure initRecipe(id, in_item, out_item:integer);
+  begin
+   recept_in[id]:=in_item;
+   recept_out[id]:=out_item;
+  end;
+
+ procedure ResetProgress(furid:integer);
+  begin
+   furnace_prstart[furid]:=getTime;
+  end;
+
+ function GetFurItem(cell, furid:integer;):integer;
+  begin
+   GetFurItem:=furnace_item[furid, cell];
+  end;
+
+ procedure SetFurItem(val, cell, furid:integer;);
+  begin
+   furnace_item[furid, cell]:=val;
+  end;
+
+ function GetFurSum(cell, furid:integer;):integer;
+  begin
+   GetFurSum:=furnace_sum[furid, cell];
+  end;
+
+ procedure SetFurSum(val, cell, furid:integer;);
+  begin
+   furnace_sum[furid, cell]:=val;
+  end;
+
+ function FurCellIsNull(cell, furid:integer;):boolean;
+  begin
+   if (GetFurItem(cell, furid)<1) or (GetFurSum(cell, furid)<1) then
+    FurCellIsNull:=true;
+  end;
+
+ procedure fixNull(cell, furid:integer;);
+  begin
+   if FurCellIsNull(cell, furid) then
+    begin
+     SetFurItem(0, cell, furid);
+     SetFurSum(0, cell, furid);
+    end;
+  end;
+
+ function CreateFurnace(x, y:integer;):integer;
+  var
+   i, j:integer;
+  begin
+   for i:=0 to MAX_FURNACE do
+    if furnace_b[i]=false then
+     begin
+      furnace_b[i]:=true;
+      for j:=0 to MAX_FURNACE_CELLS do
+       begin
+        furnace_item[i, j]:=0;
+        furnace_sum[i, j]:=0;
+       end;
+      furnace_fstart[i]:=getTime;
+      furnace_ftime[i]:=0;
+      furnace_prstart[i]:=getTime;
+      setMapInfo(i, x, y);
+      CreateFurnace:=i;
+      exit;
+     end;
+   CreateFurnace:=FURNACE_ERROR;
+  end;
+
+ function FindFuel(furid:integer):integer;
+  var
+   i:integer;
+  begin
+   if FurCellIsNull(FURNACE_FUEL, furid)=false then
+    for i:=0 to maxFuel do
+     if GetFurItem(FURNACE_FUEL, furid)=fuel_item[i] then
+      begin
+       FindFuel:=i;
+       exit;
+      end;
+   FindFuel:=FURNACE_ERROR;
+  end;
+
+ procedure DestroyFurnace(x, y:integer);
+  var
+   i, j:integer;
+  begin
+   i:=getMapInfo(x, y);
+   furnace_b[i]:=false;
+   for j:=0 to MAX_FURNACE_CELLS do
+    begin
+     if FurCellIsNull(j, i)=false then
+      drop.create(furnace_item[i, j], furnace_sum[i, j], x*16+4, y*16+4)
+     furnace_item[i, j]:=0;
+     furnace_sum[i, j]:=0;
+    end;
+   furnace_fstart[i]:=getTime;
+   furnace_ftime[i]:=0;
+   furnace_prstart[i]:=getTime;
+  end;
+
+ function GetReceptOut(in_item:integer;):integer;
+  var
+   i:integer;
+  begin
+   for i:=0 to maxRecipe do
+    if in_item=recept_in[i] then
+     begin
+      GetReceptOut:=recept_out[i];
+      exit;
+     end;
+   GetReceptOut:=FURNACE_ERROR;
+  end;
+
+ function canUpdate(i:integer):boolean;
+  var
+   itemIN, itemOUT, sumOUT, recipeOUT:integer;
+  begin
+   fixNull(FURNACE_IN, i);
+   fixNull(FURNACE_OUT, i);
+
+   itemIN:=GetFurItem(FURNACE_IN, i);
+   itemOUT:=GetFurItem(FURNACE_OUT, i);
+   sumOUT:=GetFurSum(FURNACE_OUT, i);
+   recipeOUT:=GetReceptOut(itemIN);
+
+   if (itemIN<>0) and (recipeOUT<>FURNACE_ERROR) then
+   if (itemOUT=0) or ((itemOUT=recipeOUT) and (sumOUT<getItemMax(itemOUT))) then
+    canUpdate:=true;
+  end;
+
+ function furnaceBurn(i:integer):boolean;
+  begin
+   if (getTime>=startFuelTime(i)) and (getTime<=endFuelTime(i)) then
+    furnaceBurn:=true;
+  end;
+
+ function itemBurn(i:integer):boolean;
+  begin
+   if FurCellIsNull(FURNACE_IN, i)=false then
+   if (getTime>=startProgTime(i)) and (getTime<=endProgTime(i)) then
+    itemBurn:=true;
+  end;
+
+ procedure useFuel(i:integer;);
+  var
+   fuelid, item, sum:integer;
+  begin
+   fuelid:=FindFuel(i);
+   item:=GetFurItem(FURNACE_FUEL, i);
+   sum:=GetFurSum(FURNACE_FUEL, i);
+
+   if getItemDiv(item) then
+    begin
+     sum:=sum-1;
+     if sum<0 then
+      item:=0;
+    end;
+   else
+    begin
+     item:=0;
+     sum:=0;
+    end;
+
+   updateFuelTime(fuel_time[fuelid], i);
+
+   SetFurItem(item, FURNACE_FUEL, i);
+   SetFurSum(sum, FURNACE_FUEL, i);
+  end;
+
+ procedure createOutItem(i:integer);
+  var
+   itemIN, sumIN, itemOUT, sumOUT, recipeOUT:integer;
+  begin
+   itemIN:=GetFurItem(FURNACE_IN, i);
+   sumIN:=GetFurSum(FURNACE_IN, i);
+   itemOUT:=GetFurItem(FURNACE_OUT, i);
+   sumOUT:=GetFurSum(FURNACE_OUT, i);
+   recipeOUT:=GetReceptOut(itemIN);
+
+   if getItemDiv(itemIN) then
+    begin
+     sumIN:=sumIN-1;
+     if sumIN<0 then
+      itemIN:=0;
+    end;
+   else
+    begin
+     itemIN:=0;
+     sumIN:=0;
+    end;
+
+   itemOUT:=recipeOUT;
+   sumOUT:=sumOUT+1;
+
+   SetFurItem(itemIN, FURNACE_IN, i);
+   SetFurSum(sumIN, FURNACE_IN, i);
+   SetFurItem(itemOUT, FURNACE_OUT, i);
+   SetFurSum(sumOUT, FURNACE_OUT, i);
+  end;
+
+ procedure resetData;
+  var
+   i, j:integer;
+  begin
+   for i:=0 to MAX_FURNACE do
+    begin
+     furnace_b[i]:=false;
+     furnace_fstart[i]:=getTime;
+     furnace_ftime[i]:=0;
+     furnace_prstart[i]:=getTime;
+     for j:=0 to MAX_FURNACE_CELLS do
+      begin
+       furnace_item[i, j]:=0;
+       furnace_sum[i, j]:=0;
+      end;
+    end;
+  end;
+
+ procedure UpdateFurnaces;
+  var
+   i, fuelid:integer;
+  begin
+   //Оптимизация: логика печей обновляется не чаще 10 раз в секунду,
+   //время печей считается по абсолютным таймстампам и не зависит от частоты вызова
+   if getrelativetimems-fur_upd_t<100 then
+    begin
+     UpdateTime;
+     exit;
+    end;
+   fur_upd_t:=getrelativetimems;
+
+   for i:=0 to MAX_FURNACE do
+    if furnace_b[i] then
+     if canUpdate(i) then
+      begin
+       if furnaceBurn(i) then
+        begin
+         if itemBurn(i)=false then
+          begin
+           createOutItem(i);
+           ResetProgress(i);
+          end;
+        end;
+       else
+        begin
+         fuelid:=FindFuel(i);
+         if fuelid=FURNACE_ERROR then
+          ResetProgress(i);
+         else
+          useFuel(i);
+        end;
+      end;
+     else
+      ResetProgress(i);
+
+   UpdateTime;
+  end;
+
+end.

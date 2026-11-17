@@ -1,0 +1,66 @@
+unit video;
+
+interface
+ procedure initVideo(scrW, scrH:integer; canScale:boolean;);
+ procedure drawVideo;
+
+implementation
+ uses scri, keyboard;
+ var
+  useRes:boolean;
+
+ procedure initVideo(scrW, scrH:integer; canScale:boolean;);
+  var
+   tmp:integer;
+  begin
+   keyboard.scrMulX:=1;
+   keyboard.scrMulY:=1;
+   useRes:=false;
+   if (getWidth>getHeight) and (scrW<scrH) then
+    begin
+     tmp:=scrW;
+     scrW:=scrH;
+     scrH:=tmp;
+    end;
+
+   if ((getWidth>scrW) and (getHeight>scrH)) or ((getHeight>scrW) and (getWidth>scrH)) then
+    begin
+     debug('Scaling: '+getWidth+'x'+getHeight+' -> '+scrW+'x'+scrH);
+     if getWidth<getHeight then
+      scrH:=getHeight/(getWidth/scrW);
+     else
+      scrW:=getWidth/(getHeight/scrH);
+
+     scrH:=getHeight/(getWidth/scrW);
+     scrW:=getWidth/(getHeight/scrH);
+
+     debug('Scaling result: '+getWidth+'x'+getHeight+' -> '+scrW+'x'+scrH);
+
+     ScriCreate(scrW, scrH);
+     if canScale then
+      begin
+       keyboard.scrMulX:=getWidth/scrW;
+       keyboard.scrMulY:=getHeight/scrH;
+       ScriScale(getWidth/scrW, getHeight/scrH);
+       ScriPosition(0, 0);
+       ScriSwap;
+       useRes:=true;
+      end;
+   end;
+  end;
+
+ procedure drawVideo;
+  begin
+   draw_virtual_keys;
+   if useRes then
+    begin
+     ScriSwap;
+     ScriDraw;
+     Repaint;
+     ScriSwap;
+    end;
+   else
+    Repaint;
+  end;
+
+end.

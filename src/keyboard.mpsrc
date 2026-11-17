@@ -1,0 +1,227 @@
+unit keyboard;
+
+interface
+ const
+  MAX_KEY_TYPES=27;
+  MAX_KEY_BIND=3;
+
+  KEY_FM_UP=0;
+  KEY_FM_DOWN=1;
+  KEY_FM_SELECT=2;
+
+  KEY_MENU_UP=3;
+  KEY_MENU_DOWN=4;
+  KEY_MENU_LEFT=5;
+  KEY_MENU_RIGHT=6;
+  KEY_MENU_SELECT=7;
+
+  KEY_FASTINV_PREV=8;
+  KEY_FASTINV_NEXT=9;
+
+  KEY_CHAT=10;
+
+  KEY_PLR_OPENINV=11;
+  KEY_PLR_EDITMODE=12;
+  KEY_PLR_USE=13;
+  KEY_PLR_ATTACK=14;
+
+  KEY_PLR_UP=15;
+  KEY_PLR_DOWN=16;
+  KEY_PLR_LEFT=17;
+  KEY_PLR_RIGHT=18;
+
+  KEY_MENU=19;
+
+  KEY_WIN_UP=20;
+  KEY_WIN_DOWN=21;
+  KEY_WIN_LEFT=22;
+  KEY_WIN_RIGHT=23;
+  KEY_WIN_SELECT=24;
+  KEY_WIN_ALT=25;
+  KEY_WIN_DROP=26;
+  KEY_WIN_EXIT=27;
+
+
+ var
+  s_cl:boolean;
+  load_key_tex:integer;
+  scrMulX, scrMulY:integer;
+
+ function touchscreen:boolean;
+ procedure init_touch;
+ function senClicked(ix,iy,xx,yy:integer):boolean;
+ function senPressed(ix,iy,xx,yy:integer):boolean;
+ //function get_key_clicked:integer;
+ //function get_key_pressed:integer;
+ procedure draw_virtual_keys;
+
+ procedure bindKey(keytype, id, keycode:integer);
+ function clickedKey(keytype:integer):boolean;
+ function pressedKey(keytype:integer):boolean;
+ procedure updateKeys;
+
+ procedure resetVirtualKeyboard(i:integer);
+ procedure bindVKey(i, keycode, x, y:integer);
+ procedure setVkeyImg(img:image; i:integer);
+
+implementation
+uses sensor,vars,canvas, func;
+ var
+  key_bind: array [0..MAX_KEY_BIND, 0..MAX_KEY_TYPES] of integer;
+  clicked_key, pressed_key:integer;
+
+  v_keycode: array [0..0] of integer;
+  v_keyx: array [0..0] of integer;
+  v_keyy: array [0..0] of integer;
+  v_keyimg: array [0..0] of image;
+  v_max:integer;
+
+ procedure resetVirtualKeyboard(i:integer);
+  var
+   nullimg:image;
+   v:integer;
+  begin
+   v_max:=i;
+   i:=i+1;
+   
+   bytecode
+    iload 0;
+    newarray 10;
+    putstatic field 'keyboard', 'v_keycode', '[I';
+   end;
+   bytecode
+    iload 0;
+    newarray 10;
+    putstatic field 'keyboard', 'v_keyx', '[I';
+   end;
+   bytecode
+    iload 0;
+    newarray 10;
+    putstatic field 'keyboard', 'v_keyy', '[I';
+   end;
+   bytecode
+    iload 0;
+    multianewarray class '[Ljavax/microedition/lcdui/Image;', 1;
+    putstatic field 'keyboard', 'v_keyimg', '[Ljavax/microedition/lcdui/Image;';
+   end;
+   for v:=0 to v_max do
+    v_keyimg[v]:=nullimg;
+  end;
+
+ procedure setVkeyImg(img:image; i:integer);
+  begin
+   v_keyimg[i]:=img;
+  end;
+
+ procedure bindVKey(i, keycode, x, y:integer;);
+  begin
+   v_keycode[i]:=keycode;
+   v_keyx[i]:=x;
+   v_keyy[i]:=y;
+  end;
+
+ procedure bindKey(keytype, id, keycode:integer);
+  begin
+   key_bind[id, keytype]:=keycode;
+  end;
+
+ function clickedKey(keytype:integer):boolean;
+  var
+   i:integer;
+  begin
+   for i:=0 to MAX_KEY_BIND do
+    if (key_bind[i, keytype]=clicked_key) and (key_bind[i, keytype]<>0) then
+     begin
+      clickedKey:=true;
+      exit;
+     end;
+  end;
+
+ function pressedKey(keytype:integer):boolean;
+  var
+   i:integer;
+  begin
+   for i:=0 to MAX_KEY_BIND do
+    if (key_bind[i, keytype]=pressed_key) and (key_bind[i, keytype]<>0) then
+     begin
+      pressedKey:=true;
+      exit;
+     end;
+  end;
+
+function touchscreen:boolean;
+ begin
+  setcolor(0, 0, 0);
+  fillrect(0, 0, getWidth, getHeight);
+  drawfonttext('Press 5', getWidth/2-(length('Press 5')*8)/2, getHeight-16);
+  drawfonttext('or touch the screen.', getWidth/2-(length('or touch the screen.')*8)/2, getHeight-8);
+  repaint;
+  delay(1);
+  repeat
+   updateKeys;
+   if clickedKey(KEY_MENU_SELECT) then
+    begin
+     touchscreen:=false;
+     exit;
+    end;
+   if pointer_state=1 then
+    begin
+     touchscreen:=true;
+     exit;
+    end;
+  forever;
+ end;
+
+procedure init_touch;
+ begin
+  sensor.init;
+ end;
+
+function senClicked(ix,iy,xx,yy:integer):boolean;
+ begin
+  if (pointer_state=1) and (s_cl=false) then
+  if (pointer_pressed_x>ix*scrMulX) and (pointer_pressed_y>iy*scrMulY) and (pointer_pressed_x<(ix+xx)*scrMulX) and (pointer_pressed_y<(iy+yy)*scrMulY) then
+   begin
+    s_cl:=true;
+    senClicked:=true;
+   end;
+ end;
+
+function senPressed(ix,iy,xx,yy:integer):boolean;
+ begin
+  if (pointer_state=1) then
+  if (pointer_pressed_x>ix*scrMulX) and (pointer_pressed_y>iy*scrMulY) and (pointer_pressed_x<(ix+xx)*scrMulX) and (pointer_pressed_y<(iy+yy)*scrMulY) then
+   senPressed:=true;
+ end;
+
+ procedure updateKeys;
+  var
+   i:integer;
+  begin
+   clicked_key:=getKeyClicked;
+   pressed_key:=getKeyPressed;
+
+   if pointer_state=0 then
+    s_cl:=false;
+
+   for i:=0 to v_max do
+    begin
+     if senClicked(v_keyx[i], v_keyy[i], getImageWidth(v_keyimg[i]), getImageHeight(v_keyimg[i])) then
+      clicked_key:=v_keycode[i];
+     if senPressed(v_keyx[i], v_keyy[i], getImageWidth(v_keyimg[i]), getImageHeight(v_keyimg[i])) then
+      pressed_key:=v_keycode[i];
+    end;
+  end;
+
+procedure draw_virtual_keys;
+ var
+  i:integer;
+ begin
+  if load_key_tex=1 then
+   for i:=0 to v_max do
+    drawImage(v_keyimg[i], v_keyx[i], v_keyy[i]);
+ end;
+
+initialization
+ v_max:=-1;
+end.

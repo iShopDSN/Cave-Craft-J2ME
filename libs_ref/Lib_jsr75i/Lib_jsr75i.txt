@@ -1,0 +1,46 @@
+Оригинальная библиотека Lib_jsr75: Piligrim
+Доработка: 0vZ, Piligrim, DeaDDooMER :)
+
+Список функций:
+public static String get_roots() - получение разделов (дисков)
+public static String get_dirs(String path) - получение подпапок в заданной папке. Алгоритм оптимизирован.
+public static String get_files(String path) - получение файлов в заданной папке. Алгоритм оптимизирован. Пример: my_file.ext
+public static String get_files_with_path(String path) - получение с полным путем файлов в заданной папке. Алгоритм оптимизирован. Пример: /b/mobile/my_file.ext
+public static String get_dirs_with_path(String path) - тоеж самое, но подпапок в заданной папке
+public static String read_file(String name) - чтение файла с преобразованием ASCII->Unicode
+public static String read_file_a(String name) - чтение без преобразований
+public static void write_file(String name, String info) - запись в файл name данных, содержащихся в строке info с преобразованием unicode->ascii
+public static void write_file_a(String name, String info) - тоже самое, но без преобразований
+
+public static void delete_file(String name) - удаление файла или папки
+public static int file_exists(String name)  - проверка существования. Возвращает 1 если существует
+public static String get_path(String name) - аналог функции ExtractFilePath из Дэльфи
+public static String get_name(String name) - аналог функции ExtractFileName из Дэльфи
+public static String get_url(String name) - тоже самое, что get_path, но ещё с file:// в начале
+public static void file_create(String name) - создание файла
+public static void file_rename(String name1, String name2) - переименовать файл(или папку) name1 в name2
+public static int file_size(String name) - получение размера файла в байтах
+public static int file_canread(String name) - 1 если возможно прочесть файл(или папку)
+public static int file_canwrite(String name) - 1 если возможно записывать в файл(или папку)
+
+
+public static int open_file(String name) - открыть файл. Возвращает 1, если успешно
+public static int read_byte() - прочесть байт (пример, A0=-96)
+public static int read_uns_byte() - прочесть unsigned байт (A0=160)
+public static String read_bytes(int off, int len) - чтение len байт по адресу off, возвращает в строке
+public static void write_byte(int b) - записать байт
+public static void flush() - надо вызывать после того как записали все байты. Что-то типа "записать из кэша на диск"
+public static void skip(int offset) - аналог seek, работает только для чтения
+public static void reset() - установка "курсора" чтения на 0
+public static String read_string() - прочесть строку
+public static void write_string(String s) - записать строку
+public static int close_file(String name) - закрыть файл
+public static InputStream get_stream() - открыть файл как ресурс. доступны все операции с ресурсом
+
+public static int create_folder(String name) - создать папку
+public static int folder_size(String name) - получить размер дериктории в байтах
+
+
+
+Передавать имена файлов нужно так:
+jsr75i.open_file('/b/mobile/audio/my_song.mp3');

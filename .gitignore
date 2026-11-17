@@ -1,0 +1,15 @@
+# Служебные папки сборки
+build/
+bin_unit/
+
+# Тестовые сборки (оригинальный bin/CAVE.jar остаётся в репозитории)
+bin/CAVE_test.jar
+bin/CAVE_test.jad
+
+# Служебное IDE
+history/
+
+# Системный мусор
+Thumbs.db
+Desktop.ini
+*.tmp

@@ -1,0 +1,336 @@
+unit player;
+
+interface
+ const
+  ANIM_HAND=0;
+  ANIM_LEGS=1;
+
+ var
+  fly:boolean;
+  hp, hunger, air:integer;
+  posi:integer;//Сторона в которую повёрнут игрок
+  velx,vely,min_vely,acc:integer;//Переменные для физики игрока
+  jmp, fall, an_pr:boolean;
+  invslot:integer;
+
+ procedure setX(val:integer);
+ procedure setY(val:integer);
+ function getX:integer;
+ function getY:integer;
+ function getW:integer;
+ function getH:integer;
+
+ procedure loadSkin(str, path:string);
+ procedure freeSkin;
+ procedure draw(camx, camy:integer);
+ procedure playAnim(anim:integer);
+ procedure cancelAnim(anim:integer);
+
+ procedure dropItem(item, sum:integer);
+
+ function coll:boolean;
+ function coll_bl(id:integer):boolean;
+ function coll_xy(xx,yy:integer):boolean;
+
+ procedure calcPhysics;
+
+ procedure gotoUP;
+ procedure gotoDOWN;
+ procedure gotoLEFT;
+ procedure gotoRIGHT;
+
+ procedure getDrop;
+
+implementation
+ uses func, phy, vars, Canvas, drop, items, jsr75i, inv;
+ const
+  PLAYER_W=8;
+  PLAYER_H=32;
+  PLAYER_SPEED=2;
+
+  POSI_LEFT=0;
+  POSI_RIGHT=1;
+  PLAYER_ANIM_DEL=1;
+ var
+  plx, ply:integer;
+
+  //Skin
+  PlayerBody: array [0..1] of image;
+  PlayerHand: array [0..1, 0..3] of image;
+  PlayerLegs: array [0..1, 0..2] of image;
+  animHand, animLegs, animDelay:integer;
+
+ procedure setX(val:integer);
+  begin
+   plx:=val;
+  end;
+
+ procedure setY(val:integer);
+  begin
+   ply:=val;
+  end;
+
+ function getX:integer;
+  begin
+   getX:=plx;
+  end;
+
+ function getY:integer;
+  begin
+   getY:=ply;
+  end;
+
+ function getW:integer;
+  begin
+   getW:=PLAYER_W;
+  end;
+
+ function getH:integer;
+  begin
+   getH:=PLAYER_H;
+  end;
+
+ procedure dropItem(item, sum:integer);
+  begin
+   if posi=POSI_LEFT then
+    drop.create(item, sum, getX-8, getY);
+   else
+    drop.create(item, sum, getX+getW, getY);
+  end;
+
+ procedure loadSkin(str, path:string);
+  var
+   im:image;
+   i:integer;
+  begin
+   im:=ld_tex(str, path, 'mobs/');
+
+   PlayerBody[POSI_LEFT]:=rotate_image_from_image(im, 0, 0, 8, 20, 0);
+   PlayerBody[POSI_RIGHT]:=rotate_image_from_image(im, 8, 0, 8, 20, 0);
+
+   PlayerHand[POSI_LEFT, 0]:=rotate_image_from_image(im, 40, 0, 4, 12, 0);
+   PlayerHand[POSI_RIGHT, 0]:=rotate_image_from_image(im, 44, 0, 4, 12, 0);
+
+   for i:=1 to 3 do
+    begin
+     PlayerHand[POSI_LEFT, i]:=rotate_image_from_image(im, 16, (i-1)*6, 12, 6, 0);
+     PlayerHand[POSI_RIGHT, i]:=rotate_image_from_image(im, 28, (i-1)*6, 12, 6, 0);
+    end;
+
+   for i:=0 to 2 do
+    begin
+     PlayerLegs[POSI_LEFT, i]:=rotate_image_from_image(im, i*12, 20, 12, 12, 0);
+     PlayerLegs[POSI_RIGHT, i]:=rotate_image_from_image(im, 36+i*12, 20, 12, 12, 0);
+    end;
+  end;
+
+ procedure freeSkin;
+  var
+   i, j:integer;
+   nullimg:image;
+  begin
+   for i:=0 to 1 do
+    begin
+     PlayerBody[i]:=nullimg;
+     for j:=0 to 3 do
+      PlayerHand[i, j]:=nullimg;
+     for j:=0 to 2 do
+      PlayerLegs[i, j]:=nullimg;
+    end;
+  end;
+
+ procedure playAnim(anim:integer);
+  begin
+   if anim=ANIM_HAND then
+    begin
+     animHand:=animHand+1;
+     if animHand>3 then
+      animHand:=1;
+    end;
+   else
+   if anim=ANIM_LEGS then
+    begin
+     if animDelay=0 then
+      begin
+       animLegs:=animLegs+1;
+       if animLegs>2 then
+        animLegs:=0;
+      end;
+
+     animDelay:=animDelay+1;
+     if animDelay>PLAYER_ANIM_DEL then
+      animDelay:=0;
+    end;
+  end;
+
+ procedure cancelAnim(anim:integer);
+  begin
+   if anim=ANIM_HAND then
+    begin
+     animHand:=0;
+    end;
+   else
+   if anim=ANIM_LEGS then
+    begin
+     animLegs:=0;
+    end;
+  end;
+
+ procedure draw(camx, camy:integer);
+  var
+   x, y:integer;
+  begin
+   x:=getX;
+   y:=getY;
+
+   DrawImage(PlayerBody[posi], x-camx, y-camy);
+   DrawImage(PlayerLegs[posi, animLegs], x-2-camx, y+20-camy);
+
+   if animHand=0 then
+    drawSmallItem(inv.getItem(invslot), x-camx, y+14-camy);
+   else
+   if posi=POSI_RIGHT then
+    drawSmallItem(inv.getItem(invslot), x+10-camx, y+5-camy+animHand);
+   else
+   if posi=POSI_LEFT then
+    drawSmallItem(inv.getItem(invslot), x-10-camx, y+5-camy+animHand);
+
+   if (animHand=0) or (posi=POSI_RIGHT) then
+    DrawImage(PlayerHand[posi, animHand], x+2-camx, y+8-camy);
+   else
+    DrawImage(PlayerHand[posi, animHand], x-6-camx, y+8-camy);
+  end;
+
+ //Player collision.
+function coll:boolean;
+ begin
+  coll:=CollObj(getX, getY, getW, getH);
+ end;
+
+//Player collision by block id.
+function coll_bl(id:integer):boolean;
+ begin
+  coll_bl:=CollObjBlock(getX, getY, getW, getH, id);
+ end;
+
+//Player collision by XY.
+function coll_xy(xx,yy:integer):boolean;
+ begin
+  coll_xy:=CollObjXY(getX, getY, getW, getH, xx, yy);
+ end;
+
+//Controll jump velocity
+procedure jmp_ctrl;
+ begin
+  if (coll_bl(49)) or (coll_bl(103)) or (coll_bl(108)) then
+   vely:=5;
+  if (coll_bl(50)) or (coll_bl(51)) then
+   vely:=4;
+  if (coll_bl(0)) and (coll_bl(50) or coll_bl(51)) then
+   vely:=7;
+ end;
+
+//Controll fall velocity
+ procedure phy_ctrl;
+  begin
+   if (coll_bl(49)) or (coll_bl(103)) then
+    vely:=-5;
+   if (coll_bl(50)) or (coll_bl(51)) then
+    if vely<-4 then
+     vely:=-4;
+  end;
+
+ procedure calcPhysics;
+  var
+   old_vely:integer;
+   cl:boolean;
+  begin
+   if fly=false then
+    begin
+     if vely<1 then
+      phy_ctrl;
+
+     old_vely:=vely;
+     calcGravY(getX, getY, getW, getH, CONST_PHY_ACC, vely, CONST_PHY_MAXVEL, jmp);
+     setY(PhyGetY);
+     vely:=PhyGetVelY;
+     jmp:=PhyGetJump;
+     cl:=PhyGetColl;
+
+     if cl then
+      if old_vely<-10 then
+       hp:=(hp-(abs(old_vely)-10));
+    end;
+  end;
+
+ procedure gotoUP;
+  begin
+   if fly then
+    begin
+     setY(getY-velx);
+     if coll then
+      setY(getY+velx);
+    end;
+   else
+    begin
+     jumpObjY(vely, 7, jmp);
+     vely:=PhyGetVelY;
+     jmp:=PhyGetJump;
+     jmp_ctrl;
+    end;
+  end;
+
+ procedure gotoDOWN;
+  begin
+   if fly then
+    begin
+     setY(getY+velx);
+     if coll then
+      setY(getY-velx);
+    end;
+  end;
+
+ procedure gotoLEFT;
+  begin
+   setX(getX-velx);
+   if coll then
+    setX(getX+velx);
+   posi:=POSI_LEFT;
+
+   if fly=false then
+    playAnim(ANIM_LEGS);
+  end;
+
+ procedure gotoRIGHT;
+  begin
+   setX(getX+velx);
+   if coll then
+    setX(getX-velx);
+   posi:=POSI_RIGHT;
+
+   if fly=false then
+    playAnim(ANIM_LEGS);
+  end;
+
+ procedure getDrop;
+  var
+   i, maxd, sum:integer;
+  begin
+   //Подбор дропа можно отключить настройкой GET_DRP
+   if s_get_drp=false then
+    exit;
+   maxd:=drop.max;
+   for i:=0 to maxd do
+    if drop.isNull(i)=false then
+     if CollTwoObj(getX, getY, getW, getH, drop.getX(i), drop.getY(i), drop.getW, drop.getH) then
+      begin
+       sum:=inv.giveItem(drop.getItem(i), drop.getSum(i));
+       drop.setSum(sum, i);
+       drop.fixNull(i);
+      end;
+  end;
+
+initialization
+ velx:=PLAYER_SPEED;
+ acc:=1;
+end.

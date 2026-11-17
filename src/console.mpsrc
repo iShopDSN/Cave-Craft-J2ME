@@ -1,0 +1,957 @@
+unit console;
+
+interface
+ const
+  version='BETA 8 FIX';
+ var
+  osadki:boolean;
+  bl_upd:integer;
+  s_spawn_mob:boolean;
+  ai_upd:boolean;
+  particle_upd:boolean;
+  drw_back:boolean;
+  drw_mobs:boolean;
+  drw_sm:boolean;
+  s_max_fps:integer;
+  s_jpeg_quality:integer;
+  drawgui:boolean;
+  light_type:integer;
+
+  ifosad:boolean;
+  //s_particles:boolean; - module
+
+  load_sm:integer;
+  load_sky_siz:integer;
+  //load_mob_tex:boolean; - module
+  load_back_tex:boolean;
+  load_weather_tex:boolean;
+  load_particles_tex:boolean;
+  load_light_tex:boolean;
+  load_gui_tex:boolean;
+
+  menu_background:integer;
+
+  load_minimap_tex:boolean;
+
+  //load_key_tex:integer;
+
+  drw_stars:boolean;
+
+  cheats:boolean;
+
+  sd:string;
+
+  //max_particles:integer; - module
+
+ procedure save_settings;
+ procedure load_settings;
+ procedure call_console;
+ procedure exec(s, search:string; acces:boolean);
+ procedure addToLog(str:string);
+
+implementation
+uses keyboard,particles_store,vars,maps,items,canvas,mobs,worldgen,jsr75i,testspawn,particles,func, player,sensor, drop, inv, furnace, items_store, video;
+const
+ CON_LOG_SIZE=9;
+ PARSER_MAX_STR=15;
+ MAX_IMGREG=2;
+var
+ logSTR: array [0..CON_LOG_SIZE] of string;
+ lastCommand:string;
+
+ parseStr:string;
+ EOFstr, ENDstr:boolean;
+
+ stack: array [0..0] of integer;
+ stack_pointer:integer;
+
+ autoexec_acces:boolean;
+ regimg:image;
+
+ procedure resetStack(size:integer);
+  begin
+   stack_pointer:=0;
+   size:=size+1;
+   bytecode
+    iload 0;
+    newarray 10;
+    putstatic field 'console', 'stack', '[I';
+   end;
+  end;
+
+ procedure pushStack(i:integer;);
+  begin
+   stack[stack_pointer]:=i;
+   stack_pointer:=stack_pointer+1;
+  end;
+
+ function popStack:integer;
+  begin
+   stack_pointer:=stack_pointer-1;
+   popStack:=stack[stack_pointer];
+  end;
+
+ procedure swapStack;
+  var
+   tmp:integer;
+  begin
+   tmp:=stack[stack_pointer-2];
+   stack[stack_pointer-2]:=stack[stack_pointer-1];
+   stack[stack_pointer-1]:=tmp;
+  end;
+
+ procedure dupStack;
+  begin
+   stack[stack_pointer]:=stack[stack_pointer-1];
+   stack_pointer:=stack_pointer+1;
+  end;
+
+ procedure resetTmpImg;
+  var
+   nullimg:image;
+  begin
+   regimg:=nullimg;
+  end;
+
+procedure addToLog(str:string);
+ var
+  i:integer;
+ begin
+  debug('::'+str);
+  for i:=CON_LOG_SIZE-1 downto 0 do
+   logSTR[i+1]:=logSTR[i];
+  logSTR[0]:=str;
+ end;
+
+ procedure setTexture(img:image; name:string; i:integer);
+  begin
+   name:=UpCase(name);
+   if name='BLOCK' then
+    begin
+     tex[i]:=img;
+     tex8[i]:=resize_image(img, 8, 8);
+    end;
+   else
+   if name='ITEM' then
+    begin
+     item[i]:=img;
+     item8[i]:=resize_image(img, 8, 8);
+    end;
+   else
+   if name='VKEY' then
+    setVkeyImg(img, i);
+   else
+    addToLog('Error: unknown texture type "'+name+'"');
+  end;
+
+procedure save_settings;
+ var
+  rs:recordstore;
+  t:integer;
+ begin
+  deleteRecordStore('S');
+  rs:=openRecordStore('S');
+  t:=addRecordStoreEntry(rs,version);
+  t:=addRecordStoreEntry(rs,''+light_type);
+  t:=addRecordStoreEntry(rs,''+ifosad);
+  t:=addRecordStoreEntry(rs,''+s_particles);
+  t:=addRecordStoreEntry(rs,''+drawgui);
+  t:=addRecordStoreEntry(rs,''+s_jpeg_quality);
+  t:=addRecordStoreEntry(rs,''+load_key_tex);
+  closeRecordStore(rs);
+ end;
+
+function sett_ld_bool(s:string):boolean;
+ begin
+  if s='true' then sett_ld_bool:=true;
+ end;
+
+procedure load_settings;
+ var
+  rs:recordstore;
+ begin
+  rs:=openRecordStore('S');
+  if readRecordStoreEntry(rs,1)<>version then
+   begin
+    debug(readRecordStoreEntry(rs,1));
+    closeRecordStore(rs);
+    exit;
+   end;
+  light_type:=stringtointeger(readRecordStoreEntry(rs,2));
+  ifosad:=sett_ld_bool(readRecordStoreEntry(rs,3));
+  s_particles:=sett_ld_bool(readRecordStoreEntry(rs,4));
+  drawgui:=sett_ld_bool(readRecordStoreEntry(rs,5));
+  s_jpeg_quality:=stringtointeger(readRecordStoreEntry(rs,6));
+  load_key_tex:=stringtointeger(readRecordStoreEntry(rs,7));
+  closeRecordStore(rs);
+ end;
+
+function isEOS(c:integer):boolean;
+ var
+  ch:char;
+ begin
+  ch:=chr(c);
+  if (ch=#$0A) or (ch=#$0D) then
+   isEOS:=true;
+ end;
+
+function isSpace(c:integer;):boolean;
+ var
+  ch:char;
+ begin
+  ch:=chr(c);
+  if ((ch=' ') or (ch=#$09) or (ch=#$0B) or isEOS(c)) then
+   isSpace:=true;
+ end;
+
+function nextByte(res:resource):integer;
+ var
+  i:integer;
+ begin
+  i:=ReadByte(res);
+  if i=EOF then
+   EOFstr:=true;
+  if isEOS(i) then
+   ENDstr:=true;
+
+  nextByte:=i and $FF;
+ end;
+
+function ReadString(res:resource):string;
+ var
+  b:integer;
+  tmpstr:string;
+ begin
+  ENDstr:=false;
+  repeat
+   b:=nextByte(res);
+   if EOFstr or ENDstr then
+    break;
+
+   tmpstr:=tmpstr+chr(b);
+  forever;
+  ReadString:=tmpstr;
+ end;
+
+function nextChar:integer;
+ var
+  i:integer;
+ begin
+  ENDstr:=false;
+  if length(parseStr)>0 then
+   begin
+    i:=ord(getChar(parseStr, 0));
+    parseStr:=copy(parseStr, 1, length(parseStr));
+    if isEOS(i) then
+     ENDstr:=true;
+   end;
+  else
+   begin
+    parseStr:='';
+    ENDstr:=true;
+   end;
+
+  nextChar:=i;
+ end;
+
+procedure clearSpaces;
+ var
+  i:integer;
+ begin
+  repeat
+   i:=nextChar;
+   if ENDstr then
+    exit;
+
+   {Symbol ';' is one line commentary}
+   if i=$3B then
+    begin
+     repeat
+      i:=nextChar;
+      if ENDstr then
+       exit;
+     forever;
+    end;
+
+   if isSpace(i)=false then
+    begin
+     //Go back
+     parseStr:=chr(i)+parseStr;
+     exit;
+    end;
+  forever;
+ end;
+
+function nextWord:string;
+ var
+  str:string;
+  i:integer;
+ begin
+  ENDstr:=false;
+  clearSpaces;
+  repeat
+   i:=nextChar;
+
+   if ENDstr then
+    begin
+     nextWord:=str;
+     exit;
+    end;
+
+   if isSpace(i) then
+    begin
+     //Go back
+     parseStr:=chr(i)+parseStr;
+     nextWord:=str;
+     exit;
+    end;
+   else
+    str:=str+chr(i);
+  forever;
+ end;
+
+function strToBool(str:string):boolean;
+ begin
+  str:=UpCase(str);
+  if str='TRUE' then
+   strToBool:=true
+  else
+  if str='FALSE' then
+   strToBool:=false
+  else
+  if StringToInteger(str)<>0 then
+   strToBool:=true;
+  else
+   strToBool:=false;
+ end;
+
+//Перевод строки в целое число. base - система счисления
+function Str2Dec(str:string; base:integer;):integer;
+ var
+  i, tmp, res:integer;
+  ch:char;
+  neg:boolean;
+ begin
+  str:=UpCase(str);
+  if GetChar(str, 0)='-' then
+   begin
+    neg:=true;
+    i:=i+1;
+   end;
+
+  for i:=i to length(str)-1 do
+   begin
+    ch:=GetChar(str, i);
+    if ((ch>='0') and (ch<='9')) then
+     tmp:=ord(ch)-$30;
+    else
+    if ((ch>='A') and (ch<=chr($36+base))) then
+     tmp:=ord(ch)-$37;
+    else
+     begin
+      addToLog('Error! I cant decode "'+str+'" -> "'+ch+'"');
+      Str2Dec:=0;
+      exit;
+     end;
+
+    res:=res*base+tmp;
+   end;
+
+  if neg then
+   Str2Dec:=-res;
+  else
+   Str2Dec:=res;
+ end;
+
+function getVar(name:string):integer;
+ begin
+  name:=UpCase(name);
+
+  if name='SCREEN_W' then
+   getVar:=getWidth;
+  else
+  if name='SCREEN_H' then
+   getVar:=getHeight;
+  else
+   addToLog('Unknown variable "'+name+'"');
+ end;
+
+procedure setVar(name:string; value:integer);
+ begin
+  name:=UpCase(name);
+
+  addToLog('I cant set variable "'+name+'"');
+ end;
+
+function DecodeInt(str:string):integer;
+ var
+  head:char;
+  num:string;
+ begin
+  if str='' then
+   begin
+    addToLog('DecodeInt getted null string!');
+    DecodeInt:=0;
+    exit;
+   end;
+
+  str:=UpCase(str);
+  head:=getchar(str, 0);
+  num:=copy(str, 1, length(str));
+
+  if str='TRUE' then
+   DecodeInt:=1;
+  else
+  if str='FALSE' then
+   DecodeInt:=0;
+  else
+  if str='POP' then
+   DecodeInt:=popStack;
+  else
+  if head='$' then
+   DecodeInt:=getVar(num);
+  else
+  if (head='0') and (getchar(str, 1)='X') then
+   begin
+    DecodeInt:=Str2Dec(copy(str, 2, length(str)), 16);
+   end;
+  else
+  if (head='0') and (length(str)>1) then
+   begin
+    DecodeInt:=Str2Dec(num, 8);
+   end;
+  else
+  if head='B' then
+   begin
+    DecodeInt:=Str2Dec(num, 2);
+   end;
+  else
+  if ((head>='0') and (head<='9')) or (head='-') then
+   begin
+    DecodeInt:=Str2Dec(str, 10);
+   end;
+  else
+   addToLog('Error! I cant decode "'+str+'"');
+ end;
+
+procedure exeCommand(str:string);
+ var
+  com, tmp, tmp2:string;
+  i:integer;
+ begin
+  parseStr:=str;
+  clearSpaces;
+  if parseStr='' then
+   exit;
+
+  com:=UpCase(nextWord);
+
+  if (cheats) or (autoexec_acces) or (gamemode=1) then
+   begin
+    if com='TIME' then
+     game_time:=decodeInt(nextWord);
+    else
+    if com='FLY' then
+     fly:=strToBool(nextWord);
+    else
+    if com='PL_HP' then
+     hp:=decodeInt(nextWord);
+    else
+    if com='PL_EP' then
+     hunger:=decodeInt(nextWord);
+    else
+    if com='GIVE' then
+     player.dropItem(decodeInt(nextWord), decodeInt(nextWord));
+    else
+    if com='PL_TP' then
+     begin
+      player.setX(decodeInt(nextWord));
+      player.setY(decodeInt(nextWord));
+     end;
+    else
+    if com='GAMEMODE' then
+     begin
+      gamemode:=decodeInt(nextWord);
+      fly:=false;
+     end;
+    else
+    if com='KILL_MOBS' then
+     for i:=0 to 31 do
+      begin
+       mob[i].m_type:=0;
+       mob[i].m_hp:=0;
+      end;
+    else
+    if com='SPAWN' then
+     begin
+      player.setX(get_spawn_x*16+4);
+      player.setY(get_spawn_y*16);
+     end;
+    else
+    if com='SPAWN_MOBS' then
+     s_spawn_mob:=strToBool(nextWord);
+    else
+    /*if com='SURVIVAL' then
+     begin
+      fly:=false;
+      gamemode:=0;
+      hp:=20;
+      hunger:=20;
+      for i:=0 to 35 do
+       begin
+        inv[i].item_i:=0;
+        inv[i].sum_i:=0;
+       end;
+     end;
+    else*/
+    if com='CLEAR_INVENTORY' then
+     begin
+      inv.resetData;
+     end;
+    else
+
+   end;
+
+  if com='I_AM_CHEATER' then
+   begin
+    if nextWord=#$36+#$36+#$36 then
+     cheats:=not cheats;
+    else
+     cheats:=false;
+   end;
+  else
+  if com='HALT' then
+   halt;
+  else
+  if com='WEATHER' then
+   osadki:=strToBool(nextWord);
+  else
+  if com='MEGASPAWN' then
+   megaspawn;
+  else
+  if com='REF_DRP' then
+   ref_drp:=strToBool(nextWord);
+  else
+  if com='BL_UPD' then
+   bl_upd:=decodeInt(nextWord);
+  else
+  if com='GET_DRP' then
+   s_get_drp:=strToBool(nextWord);
+  else
+  if com='AI_UPD' then
+   ai_upd:=strToBool(nextWord);
+  else
+  if com='PRT_UPD' then
+   particle_upd:=strToBool(nextWord);
+  else
+  if com='MAX_FPS' then
+   s_max_fps:=decodeInt(nextWord); else
+  if com='DRW_BACK' then
+   drw_back:=strToBool(nextWord);
+  else
+  if com='DRW_MOBS' then
+   drw_mobs:=strToBool(nextWord);
+  else
+  if com='DRP_PHY' then
+   drp_phy:=strToBool(nextWord);
+  else
+  if com='DRW_SM' then
+   drw_sm:=strToBool(nextWord);
+  else
+  if com='JPEG_Q' then
+   begin
+    s_jpeg_quality:=decodeInt(nextWord);
+    if s_jpeg_quality>100 then
+     s_jpeg_quality:=100;
+    else if s_jpeg_quality<0 then
+     s_jpeg_quality:=0;
+   end;
+  else
+  if com='LOAD_SM' then
+   load_sm:=decodeInt(nextWord);
+  else
+  if com='S_WEATHER' then
+   ifosad:=strToBool(nextWord);
+  else
+  if com='S_HIDE_GUI' then
+   drawgui:=strToBool(nextWord);
+  else
+  if com='S_LIGHT' then
+   light_type:=decodeInt(nextWord);
+  else
+  if com='S_PARTICLES' then
+   s_particles:=strToBool(nextWord);
+  else
+  if com='LOAD_SKY' then
+   load_sky_siz:=decodeInt(nextWord);
+  else
+  if com='LOAD_MOB_TEX' then
+   load_mob_tex:=strToBool(nextWord);
+  else
+  if com='LOAD_BACK_TEX' then
+   load_back_tex:=strToBool(nextWord);
+  else
+  if com='LOAD_WEATHER_TEX' then
+   load_weather_tex:=strToBool(nextWord);
+  else
+  if com='LOAD_PARTICLES_TEX' then
+   load_particles_tex:=strToBool(nextWord);
+  else
+  if com='LOAD_LIGHT_TEX' then
+   load_light_tex:=strToBool(nextWord);
+  else
+  if com='LOAD_GUI_TEX' then
+   load_gui_tex:=strToBool(nextWord);
+  else
+  if com='MENU_BACKGROUND' then
+   menu_background:=decodeInt(nextWord);
+  else
+  if com='DRW_DRP' then
+   drw_drp:=strToBool(nextWord);
+  else
+  if com='DRW_STARS' then
+   drw_stars:=strToBool(nextWord);
+  else
+  if com='SV_SETT' then
+   save_settings;
+  else
+  if com='LD_SETT' then
+   load_settings;
+  else
+  if com='LOAD_MINIMAP_TEX' then
+   load_minimap_tex:=strToBool(nextWord);
+  else
+  if com='MAX_PARTICLES' then
+   begin
+    max_particles:=decodeInt(nextWord);
+    reset_particles(max_particles+1);
+   end;
+  else
+  if com='EXEC' then
+   begin
+    tmp:=nextWord;
+    exec('/'+nextWord, tmp, autoexec_acces);
+   end;
+  else
+  if com='RESET_ITEMS' then
+   begin
+    resetItems(decodeInt(nextWord)+1);
+    //addToLog('Max items: '+decodeInt(parsed_str[1]));
+   end;
+  else
+  if com='SET_ITEM' then
+   begin
+    setItemData(decodeInt(nextWord),
+                decodeInt(nextWord),
+                decodeInt(nextWord),
+                decodeInt(nextWord),
+                decodeInt(nextWord),
+                decodeInt(nextWord));
+   end;
+  else
+  if com='RESET_BLOCKS' then
+   begin
+    resetBlocks(decodeInt(nextWord)+1);
+    //addToLog('Max blocks: '+decodeInt(parsed_str[1]));
+   end;
+  else
+  if com='SET_BLOCK' then
+   begin
+    setBlockData(decodeInt(nextWord),
+                 decodeInt(nextWord),
+                 decodeInt(nextWord),
+                 decodeInt(nextWord),
+                 decodeInt(nextWord),
+                 decodeInt(nextWord),
+                 decodeInt(nextWord),
+                 decodeInt(nextWord),
+                 decodeInt(nextWord));
+   end;
+  else
+  if com='RESET_TOOLS' then
+   begin
+    resetTools(decodeInt(nextWord)+1);
+    //addToLog('Max tools: '+decodeInt(parsed_str[1]));
+   end;
+  else
+  if com='SET_TOOL' then
+   begin
+    setToolData(decodeInt(nextWord),
+                decodeInt(nextWord),
+                decodeInt(nextWord),
+                decodeInt(nextWord),
+                decodeInt(nextWord));
+   end;
+  else
+  if com='RESET_FUELS' then
+   begin
+    furnace.setMaxFuel(decodeInt(nextWord));
+    //addToLog('Max fuel: '+decodeInt(parsed_str[1]));
+   end;
+  else
+  if com='SET_FUEL' then
+   begin
+    furnace.initFuel(decodeInt(nextWord),
+                     decodeInt(nextWord),
+                     decodeInt(nextWord));
+   end;
+  else
+  if com='RESET_RECIPES' then
+   begin
+    furnace.setMaxRecipes(decodeInt(nextWord));
+    //addToLog('Max recipes: '+decodeInt(parsed_str[1]));
+   end;
+  else
+  if com='SET_RECIPE' then
+   begin
+    furnace.initRecipe(decodeInt(nextWord),
+                       decodeInt(nextWord),
+                       decodeInt(nextWord));
+   end;
+  else
+  if com='RESET_CRAFTS' then
+   begin
+    resetCrafts(decodeInt(nextWord));
+    //addToLog('Max crafts: '+decodeInt(parsed_str[1]));
+   end;
+  else
+  if com='SET_CRAFT_IN' then
+   begin
+    setCraftIn(decodeInt(nextWord),
+               decodeInt(nextWord),
+               decodeInt(nextWord),
+               decodeInt(nextWord));
+   end;
+  else
+  if com='SET_CRAFT_OUT' then
+   begin
+    setCraftOUT(decodeInt(nextWord),
+                decodeInt(nextWord),
+                decodeInt(nextWord),
+                decodeInt(nextWord));
+   end;
+  else
+  if com='RESET_BLOCKS_TEX' then
+   begin
+    initBlockTex(decodeInt(nextWord));
+   end;
+  else
+  if com='RESET_ITEMS_TEX' then
+   begin
+    initItemTex(decodeInt(nextWord));
+   end;
+  else
+  if com='LOAD_TEX' then
+   regimg:=ld_tex(nextWord, '/'+sd+'/cavecraft/', '');
+  else
+  if com='RESET_TEX' then
+   resetTmpImg;
+  else
+  if com='SET_TEX' then
+   setTexture(regimg,
+              nextWord,
+              decodeInt(nextWord))
+  else
+  if com='SET_CANV_TEX' then
+   begin
+    tmp:=nextWord;
+    tmp2:=nextWord;
+    setTexture(rotate_image_from_image(regimg,
+                                       decodeInt(nextWord),
+                                       decodeInt(nextWord),
+                                       decodeInt(nextWord),
+                                       decodeInt(nextWord),
+                                       0),
+               tmp,
+               decodeInt(tmp2));
+   end;
+  else
+  if com='SET_MAX_ITEM_LIST' then
+   setMaxItemList(decodeInt(nextWord));
+  else
+  if com='SET_ITEM_LIST' then
+   setItemList(decodeInt(nextWord),
+               decodeInt(nextWord));
+  else
+  if com='BIND_KEY' then
+   begin
+    tmp:=nextWord;
+    for i:=0 to MAX_KEY_BIND do
+     keyboard.bindKey(decodeInt(tmp), i, decodeInt(nextWord));
+   end;
+  else
+  if com='STACK' then
+   resetStack(decodeInt(nextWord));
+  else
+  if com='PUSH' then
+   pushStack(decodeInt(nextWord));
+  else
+  if com='POP' then
+   i:=popStack;
+  else
+  if com='SWAP' then
+   swapStack;
+  else
+  if com='DUP' then
+   dupStack;
+  else
+  if com='ADD' then
+   pushStack(popStack+popStack);
+  else
+  if com='SUB' then
+   begin
+    i:=popStack;
+    pushStack(popStack-i);
+   end;
+  else
+  if com='MUL' then
+   pushStack(popStack*popStack);
+  else
+  if com='DIV' then
+   begin
+    i:=popStack;
+    pushStack(popStack/i);
+   end;
+  else
+  if com='MOD' then
+   begin
+    i:=popStack;
+    pushStack(popStack mod i);
+   end;
+  else
+  if com='SET' then
+   setVar(nextWord, decodeInt(nextWord));
+  else
+  if com='POPSET' then
+   setVar(nextWord, popStack);
+  else
+  if com='MAX_VKEYS' then
+   resetVirtualKeyboard(decodeInt(nextWord));
+  else
+  if com='SET_VKEY' then
+   bindVKey(decodeInt(nextWord),
+            decodeInt(nextWord),
+            decodeInt(nextWord),
+            decodeInt(nextWord));
+  else
+  if com='SET_RESOLUTION' then
+   initVideo(decodeInt(nextWord), decodeInt(nextWord), strToBool(nextWord));
+  else
+   //addToLog('Unknown command "'+com+'"');
+ end;
+
+procedure call_console;
+ var
+  commandTxt:integer;
+  i, tmpid:integer;
+  exitCmd, exeCmd, Clicked:command;
+  str:string;
+ begin
+
+  setFont(FONT_FACE_SYSTEM,FONT_STYLE_PLAIN,FONT_SIZE_SMALL);
+
+  repeat
+   ClearForm;
+
+   exitCmd:=createCommand('Exit', CM_EXIT, 1);
+   exeCmd:=createCommand('Execute', CM_OK, 1);
+   addCommand(exitCmd);
+   addCommand(exeCmd);
+
+   commandTxt:=formAddTextField('Enter command:', ''+lastCommand, 32, TF_ANY);
+
+   for i:=0 to CON_LOG_SIZE do
+    tmpid:=formAddString(logSTR[i]+chr(10));
+
+   ShowForm;
+   Repaint;
+
+   repeat
+    Clicked:=getClickedCommand;
+    if Clicked=exitCmd then
+     begin
+      lastCommand:=formGetText(commandTxt);
+      showCanvas;
+      exit;
+     end;
+    else
+    if Clicked=exeCmd then
+     begin
+      str:=formGetText(commandTxt);
+      addToLog(str);
+      exeCommand(str);
+      lastCommand:='';
+      break;
+     end;
+   forever;
+  forever;
+ end;
+
+procedure exec(s, search:string; acces:boolean);
+ var
+  res:resource;
+  str:string;
+  tmp_acces, tmpEOF:boolean;
+ begin
+  tmp_acces:=autoexec_acces;
+  autoexec_acces:=acces;
+
+  search:=UpCase(search);
+
+  if search='LOCAL' then
+   begin
+    addToLog('Load file "'+s+'" at LOCAL!');
+    res:=OpenResource('/'+s);
+   end;
+  else
+  if search='SD' then
+   begin
+    if open_file('/'+sd+'/cavecraft/'+s)=1 then
+     begin
+      addToLog('Load file "'+s+'" at SD!');
+      res:=get_stream;
+     end;
+   end;
+  else
+  if search='AUTO' then
+   begin
+    addToLog('path "/'+sd+'/cavecraft/'+s+'"');
+    if file_exists('/'+sd+'/cavecraft/'+s)=1 then
+     begin
+      if open_file('/'+sd+'/cavecraft/'+s)=1 then
+       begin
+        res:=get_stream;
+        addToLog('Load file "'+s+'" at SD(AUTO)!');
+       end;
+     end;
+    else
+     begin
+      addToLog('Load file "'+s+'" at LOCAL(AUTO)!');
+      res:=OpenResource('/'+s);
+     end;
+   end;
+  else
+   begin
+    addToLog('Unknown load type "'+search+'", file "'+s+'" not executed!');
+    autoexec_acces:=tmp_acces;
+    exit;
+   end;
+
+  if ResourceAvailable(res) then
+   repeat
+    str:=ReadString(res);
+    tmpEOF:=EOFstr;
+    //addToLog('Exec: "'+str+'"');
+    exeCommand(str);
+    EOFstr:=tmpEOF;
+   until EOFstr;
+  else
+   addToLog('Execute file "'+s+'" not found!');
+
+  CloseResource(res);
+  autoexec_acces:=tmp_acces;
+ end;
+
+initialization
+ load_light_tex:=true;
+end.

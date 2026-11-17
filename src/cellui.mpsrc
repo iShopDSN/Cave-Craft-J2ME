@@ -1,0 +1,491 @@
+unit cellui;
+
+interface
+ const
+  CONST_MAX_LAYERS=1;
+  CONST_MAX_CELLS=63;
+  CONST_MAX_OFFSETS=1;
+  CONST_MAX_CURS=1;
+  CONST_MAX_INFO=2;
+
+  CELL_TYPE_NULL=0;
+  CELL_TYPE_PLAYER_INV=1;
+  CELL_TYPE_CREWATIVE_INV=2;
+  CELL_TYPE_CHEST=3;
+  CELL_TYPE_FASTCRAFT=4;
+  CELL_TYPE_FURNACE=5;
+
+  CELL_FLAG_OFFSET=$F;
+  CELL_FLAG_INDICATOR=$10;
+
+  CUR_SELECT1=0;
+  CUR_SELECT2=1;
+
+  WINDOW_NULL=0;
+
+  FIND_CELL_UP=0;
+  FIND_CELL_DOWN=1;
+  FIND_CELL_LEFT=2;
+  FIND_CELL_RIGHT=3;
+
+  CELL_W=16;
+  CELL_H=16;
+
+ procedure ClearLayer(n:integer);
+ procedure LoadCurImg(img:image; i:integer;);
+
+ procedure NewLayer;
+ procedure DelLayer;
+ function CellLayer:integer;
+ procedure setCellLayer(n:integer);
+
+ procedure initCell(cell_type, id, offset, data, x, y:integer; indicator:boolean;);
+ function getCellID(i:integer):integer;
+ function getCellData(i:integer):integer;
+ function getCellX(i:integer):integer;
+ function getCellY(i:integer):integer;
+ procedure setOffset(newOffset, i:integer;);//i - номер смещения
+ function getOffset(i:integer):integer;//i - номер смещения
+ function getCellOffset(i:integer):integer;
+
+ function getItem(i:integer):integer;
+ procedure setItem(val, i:integer);
+ function getSum(i:integer):integer;
+ procedure setSum(val, i:integer);
+ procedure fixNullCell(i:integer;);
+
+ procedure DrawCellLayer(i, x, y:integer);
+
+ procedure SetWindowInfo(n, i:integer);
+ function GetWindowInfo(i:integer):integer;
+ procedure SetCur(i:integer);
+ function GetCur:integer;
+
+ procedure SetCurIndex(n, i:integer);
+ function GetCurIndex(i:integer):integer;
+ procedure SetCurActive(n:boolean; i:integer);
+ function GetCurActive(i:integer):boolean;
+ procedure SetWindowType(wtype:integer);
+ function GetWindowType:integer;
+
+ procedure DrawCursors(n, x, y:integer);
+
+ procedure ShiftCurrentCur(find:integer;);
+
+ function FindCurrentWindowsType:boolean;
+
+implementation
+ uses vars, Canvas, items, console, furnace, chest, inv, func, items_store;
+ var
+  layer:integer;
+  last_cell: array [0..CONST_MAX_LAYERS] of integer;
+  inv_type: array [0..CONST_MAX_LAYERS, 0..CONST_MAX_CELLS] of integer;//Name of virtual massive
+  inv_id: array [0..CONST_MAX_LAYERS, 0..CONST_MAX_CELLS] of integer;//ID of real item massive
+  inv_x, inv_y: array [0..CONST_MAX_LAYERS, 0..CONST_MAX_CELLS] of integer;
+  inv_data: array [0..CONST_MAX_LAYERS, 0..CONST_MAX_CELLS] of integer;
+  inv_flags: array [0..CONST_MAX_LAYERS, 0..CONST_MAX_CELLS] of integer;
+
+  inv_offset: array [0..CONST_MAX_LAYERS, 0..CONST_MAX_OFFSETS] of integer;//Offset of real item id in inventory
+
+  WindowType: array [0..CONST_MAX_LAYERS] of integer;
+  WindowInfo: array [0..CONST_MAX_LAYERS, 0..CONST_MAX_INFO] of integer;
+
+  WindowCurCurrent: array [0..CONST_MAX_LAYERS] of integer;
+  WindowCurImg: array [0..CONST_MAX_CURS] of image;
+  WindowCurIndex: array [0..CONST_MAX_LAYERS, 0..CONST_MAX_CURS] of integer;
+  WindowCurActive: array [0..CONST_MAX_LAYERS, 0..CONST_MAX_CURS] of boolean;
+
+{=====[Inventory interface functions]=====}
+ procedure ClearLayer(n:integer);
+  var
+   i:integer;
+  begin
+   for i:=0 to CONST_MAX_CELLS do
+    begin
+     last_cell[n]:=0;
+     inv_type[n, i]:=CELL_TYPE_NULL;
+     inv_id[n, i]:=0;
+     inv_x[n, i]:=0;
+     inv_y[n, i]:=0;
+     inv_data[n, i]:=0;
+     inv_flags[n, i]:=0;
+    end;
+
+   for i:=0 to CONST_MAX_OFFSETS do
+    inv_offset[n, i]:=0;
+
+   WindowType[n]:=WINDOW_NULL;
+   WindowCurCurrent[n]:=0;
+   for i:=0 to CONST_MAX_INFO do
+    WindowInfo[n, i]:=0;
+   for i:=0 to CONST_MAX_CURS do
+    begin
+     WindowCurIndex[n, i]:=0;
+     WindowCurActive[n, i]:=false;
+    end;
+  end;
+
+ procedure LoadCurImg(img:image; i:integer;);
+  begin
+   WindowCurImg[i]:=img;
+  end;
+
+ procedure NewLayer;
+  begin
+   layer:=layer+1;
+  end;
+
+ procedure DelLayer;
+  begin
+   ClearLayer(layer);
+   layer:=layer-1;
+  end;
+
+ function CellLayer:integer;
+  begin
+   CellLayer:=layer;
+  end;
+
+ procedure setCellLayer(n:integer);
+  begin
+   layer:=n;
+  end;
+
+ procedure initCell(cell_type, id, offset, data, x, y:integer; indicator:boolean;);
+  var
+   i:integer;
+  begin
+   i:=last_cell[layer];
+   last_cell[layer]:=last_cell[layer]+1;
+
+   inv_type[layer, i]:=cell_type;
+   inv_id[layer, i]:=id;
+   inv_x[layer, i]:=x;
+   inv_y[layer, i]:=y;
+   inv_data[layer, i]:=data;
+
+   inv_flags[layer, i]:=(offset and CELL_FLAG_OFFSET);
+
+   if indicator then
+    inv_flags[layer, i]:=inv_flags[layer, i] or CELL_FLAG_INDICATOR;
+  end;
+
+ function getCellType(i:integer):integer;
+  begin
+   getCellType:=inv_type[layer, i];
+  end;
+
+ function getCellX(i:integer):integer;
+  begin
+   getCellX:=inv_x[layer, i];
+  end;
+
+ function getCellY(i:integer):integer;
+  begin
+   getCellY:=inv_y[layer, i];
+  end;
+
+ function getCellID(i:integer):integer;
+  begin
+   getCellID:=inv_id[layer, i];
+  end;
+
+ function getCellData(i:integer):integer;
+  begin
+   getCellData:=inv_data[layer, i];
+  end;
+
+ function getCellFlagIndicator(i, j:integer):boolean;
+  begin
+   getCellFlagIndicator:=(inv_flags[i, j] and CELL_FLAG_INDICATOR)>0;
+  end;
+
+ procedure setOffset(newOffset, i:integer;);
+  begin
+   inv_offset[layer, i]:=newOffset;
+  end;
+
+ function getOffset(i:integer):integer;
+  begin
+   getOffset:=inv_offset[layer, i];
+  end;
+
+ function getCellOffset(i:integer):integer;
+  begin
+   getCellOffset:=inv_flags[layer, i] and CELL_FLAG_OFFSET;
+  end;
+
+ function getItemIdx(i, n:integer):integer;
+  var
+   id, data, _type:integer;
+  begin
+   id:=inv_id[n, i]+inv_offset[n, inv_flags[n, i] and CELL_FLAG_OFFSET];
+   _type:=inv_type[n, i];
+   data:=inv_data[n, i];
+
+   if _type=CELL_TYPE_PLAYER_INV then
+    getItemIdx:=inv.getItem(id);
+   else
+   if _type=CELL_TYPE_CREWATIVE_INV then
+    getItemIdx:=getItemList(id);
+   else
+   if _type=CELL_TYPE_CHEST then
+    getItemIdx:=chest.getItem(id, data);
+   else
+   if _type=CELL_TYPE_FASTCRAFT then
+    getItemIdx:=getCraftOutItem(id);
+   else
+   if _type=CELL_TYPE_FURNACE then
+    getItemIdx:=GetFurItem(id, data);
+  end;
+
+ procedure setItemIdx(val, i, n:integer);
+  var
+   id, data, _type:integer;
+  begin
+   id:=inv_id[n, i]+inv_offset[n, inv_flags[n, i] and CELL_FLAG_OFFSET];
+   _type:=inv_type[n, i];
+   data:=inv_data[n, i];
+
+   if _type=CELL_TYPE_PLAYER_INV then
+    inv.setItem(val, id);
+   else
+   if _type=CELL_TYPE_CHEST then
+    chest.setItem(val, id, data);
+   else
+   if _type=CELL_TYPE_FURNACE then
+    SetFurItem(val, id, data);
+  end;
+
+ function getSumIdx(i, n:integer):integer;
+  var
+   id, data, _type:integer;
+  begin
+   id:=inv_id[n, i]+inv_offset[n, inv_flags[n, i] and CELL_FLAG_OFFSET];
+   _type:=inv_type[n, i];
+   data:=inv_data[n, i];
+
+   if _type=CELL_TYPE_PLAYER_INV then
+    getSumIdx:=inv.getSum(id);
+   else
+   if _type=CELL_TYPE_CREWATIVE_INV then
+    getSumIdx:=getItemMax(getItemList(id));
+   else
+   if _type=CELL_TYPE_CHEST then
+    getSumIdx:=chest.getSum(id, data);
+   else
+   if _type=CELL_TYPE_FASTCRAFT then
+    getSumIdx:=getCraftOutSum(id);
+   else
+   if _type=CELL_TYPE_FURNACE then
+    getSumIdx:=GetFurSum(id, data);
+  end;
+
+ procedure setSumIdx(val, i, n:integer);
+  var
+   id, data, _type:integer;
+  begin
+   id:=inv_id[n, i]+inv_offset[n, inv_flags[n, i] and CELL_FLAG_OFFSET];
+   _type:=inv_type[n, i];
+   data:=inv_data[n, i];
+
+   if _type=CELL_TYPE_PLAYER_INV then
+    inv.setSum(val, id);
+   else
+   if _type=CELL_TYPE_CHEST then
+    chest.setSum(val, id, data);
+   else
+   if _type=CELL_TYPE_FURNACE then
+    SetFurSum(val, id, data);
+  end;
+
+ //i - индекс в таблице ячеек
+ function getItem(i:integer):integer;
+  begin
+   getItem:=getItemIdx(i, CellLayer);
+  end;
+
+ procedure setItem(val, i:integer);
+  begin
+   setItemIdx(val, i, CellLayer);
+  end;
+
+ function getSum(i:integer):integer;
+  begin
+   getSum:=getSumIdx(i, CellLayer);
+  end;
+
+ procedure setSum(val, i:integer);
+  begin
+   setSumIdx(val, i, CellLayer);
+  end;
+
+ procedure fixNullCell(i:integer);
+  begin
+   if (getItem(i)<1) or (getSum(i)<1) then
+    begin
+     setItem(0, i);
+     setSum(0, i);
+    end;
+  end;
+
+ procedure DrawCellLayer(i, x, y:integer);
+  var
+   j:integer;
+  begin
+   for j:=0 to CONST_MAX_CELLS do
+    if inv_type[i, j]<>CELL_TYPE_NULL then
+     begin
+      drawItem(getItemIdx(j, i), getSumIdx(j, i), x+inv_x[i, j], y+inv_y[i, j], getCellFlagIndicator(i, j));
+     end;
+  end;
+
+{======[]======}
+
+ procedure SetWindowInfo(n, i:integer);
+  begin
+   WindowInfo[CellLayer, i]:=n;
+  end;
+
+ function GetWindowInfo(i:integer):integer;
+  begin
+   GetWindowInfo:=WindowInfo[CellLayer, i];
+  end;
+
+ procedure SetCur(i:integer);
+  begin
+   WindowCurCurrent[CellLayer]:=i;
+  end;
+
+ function GetCur:integer;
+  begin
+   GetCur:=WindowCurCurrent[CellLayer];
+  end;
+
+ procedure SetCurIndex(n, i:integer);
+  begin
+   WindowCurIndex[CellLayer, i]:=n;
+  end;
+
+ function GetCurIndex(i:integer):integer;
+  begin
+   GetCurIndex:=WindowCurIndex[CellLayer, i];
+  end;
+
+ procedure SetCurActive(n:boolean; i:integer);
+  begin
+   WindowCurActive[CellLayer, i]:=n;
+  end;
+
+ function GetCurActive(i:integer):boolean;
+  begin
+   GetCurActive:=WindowCurActive[CellLayer, i];
+  end;
+
+ procedure SetWindowType(wtype:integer);
+  begin
+   WindowType[CellLayer]:=wtype;
+  end;
+
+ function GetWindowType:integer;
+  var
+   tmp:integer;
+  begin
+   tmp:=CellLayer;
+   if CellLayer<0 then
+    GetWindowType:=WINDOW_NULL;
+   else
+    GetWindowType:=WindowType[CellLayer];
+  end;
+
+ function FindCurrentWindowsType:boolean;
+  var
+   crrwt, i:integer;
+  begin
+   crrwt:=GetWindowType;
+   for i:=0 to CONST_MAX_LAYERS do
+    if (WindowType[i]=crrwt) and (i<>CellLayer) then
+     begin
+      FindCurrentWindowsType:=true;
+      exit;
+     end;
+  end;
+
+ procedure DrawCursors(n, x, y:integer);
+  var
+   i, idx:integer;
+  begin
+   for i:=0 to CONST_MAX_CURS do
+   if WindowCurActive[n, i] then
+    begin
+     idx:=WindowCurIndex[n, i];
+     DrawImage(WindowCurImg[i], x+inv_x[n, idx], y+inv_y[n, idx]);
+    end;
+  end;
+
+ procedure ShiftCurrentCur(find:integer;);
+  var
+   find_i, find_x, find_y:integer;
+   res_i, res_x, res_y:integer;
+   i, tmp_x, tmp_y:integer;
+  begin
+   find_i:=GetCurIndex(GetCur);
+   find_x:=getCellX(find_i);
+   find_y:=getCellY(find_i);
+   res_i:=find_i;
+   if find=FIND_CELL_UP then
+    res_y:=-2147483647;
+   if find=FIND_CELL_DOWN then
+    res_y:=2147483647;
+   if find=FIND_CELL_LEFT then
+    res_x:=-2147483647;
+   if find=FIND_CELL_RIGHT then
+    res_x:=2147483647;
+
+   for i:=0 to CONST_MAX_CELLS do
+    if (getCellType(i)<>CELL_TYPE_NULL) and (i<>find_i) then
+     begin
+      tmp_x:=getCellX(i);
+      tmp_y:=getCellY(i);
+      //debug('['+i+']: tmp_y='+tmp_y+'; res_y='+res_y+';');
+      if find=FIND_CELL_UP then
+       begin
+        if (tmp_y<find_y) and (tmp_y>res_y) and (tmp_x>=find_x-CELL_W/2) and (tmp_x<=find_x+CELL_W+CELL_W/2) then
+         res_i:=i;
+       end;
+
+      if find=FIND_CELL_DOWN then
+       begin
+        if ((tmp_y>find_y) and (tmp_y<res_y)) and (tmp_x>=find_x-CELL_W/2) and (tmp_x<=find_x+CELL_W+CELL_W/2) then
+         res_i:=i;
+       end;
+
+      if find=FIND_CELL_LEFT then
+       begin
+        //debug('LEFT ['+i+']: tmp_x='+tmp_x+'; find_x='+find_x+'; res_x='+res_x+';');
+        if (tmp_x<find_x) and (tmp_x>res_x) and (tmp_y>=find_y-CELL_H/2) and (tmp_y<=find_y+CELL_H+CELL_H/2) then
+         res_i:=i;
+       end;
+
+      if find=FIND_CELL_RIGHT then
+       begin
+        //debug('RIGHT ['+i+']: tmp_x='+tmp_x+'; find_x='+find_x+'; res_x='+res_x+';');
+        if (tmp_x>find_x) and (tmp_x<res_x) and (tmp_y>=find_y-CELL_H/2) and (tmp_y<=find_y+CELL_H+CELL_H/2) then
+         res_i:=i;
+       end;
+
+
+      if res_i<>find_i then
+       begin
+        res_x:=getCellX(res_i);
+        res_y:=getCellY(res_i);
+       end;
+     end;
+   SetCurIndex(res_i, GetCur);
+  end;
+
+initialization
+ layer:=-1;
+ WindowCurImg[0]:=loadimage('/terrain/sun.png');
+ WindowCurImg[1]:=loadimage('/terrain/moon_phases/moon_phase_0.png');
+end.

@@ -1,0 +1,342 @@
+unit func;
+
+interface
+ function get_spawn_x:integer;//Возвращает блок по X где должен появиться игрок
+ function get_spawn_y:integer;//Возвращает блок по Y где должен появиться игрок
+ procedure draw_block(xx,yy:integer);
+ procedure drawSmallItem(item, x, y:integer);
+ procedure drawItem(item, sum, x, y:integer; indicator:boolean;);
+ procedure LoadDrawFont(s:string);
+ procedure DrawFontTextSpec(str:string; x, y, color:integer; spec:boolean;);
+ procedure DrawFontText(str:string; x, y:integer);
+function ld_tex(name,path,folder:string):image;
+function readint:integer;
+procedure writeint(intt:integer);
+procedure writebool(bo:boolean);
+function readbool:boolean;
+procedure writestr(s:string);
+function readstr:string;
+
+implementation
+ uses canvas,imgcolor,jsr75i, vars, safeload,  items,maps, items_store;
+
+ var
+  //Кеш жёлтых символов: ReplaceImgColor очень дорог, чтобы звать его на каждый символ каждый кадр
+  yellowfont:array [0..127] of image;
+  yellowset:array [0..127] of boolean;
+
+ //Загрузка изображения из текстурпака, ели такого нет, то происходит загрузка из архива игры
+function ld_tex(name,path,folder:string):image;
+ begin
+  if tex_pack<>'' then
+   begin
+    if file_exists(path+folder+name)=1 then
+     begin
+      ld_tex:=safely_load_image_fs(path+folder+name);
+     end; else ld_tex:=loadimage('/'+folder+name);
+   end;
+  if tex_pack='' then ld_tex:=loadimage('/'+folder+name);
+ end;
+
+function readint:integer;
+ var
+  b:integer;
+ begin
+  b:=b or (read_uns_byte<<24);
+  b:=b or (read_uns_byte<<16);
+  b:=b or (read_uns_byte<<8);
+  b:=b or (read_uns_byte);
+  readint:=b;
+ end;
+
+procedure writeint(intt:integer);
+ begin
+  write_byte((intt>>24) and $FF);
+  write_byte((intt>>16) and $FF);
+  write_byte((intt>>8) and $FF);
+  write_byte((intt) and $FF);
+ end;
+
+procedure writebool(bo:boolean);
+ begin
+  if bo=true then
+   write_byte(1);
+  else
+   write_byte(0);
+ end;
+
+function readbool:boolean;
+ begin
+  readbool:=read_byte>0;
+ end;
+
+procedure writestr(s:string);
+ var
+  i:integer;
+ begin
+  for i:=0 to length(s) do
+   write_byte(ord(getChar(s,i)));
+ end;
+
+function readstr:string;
+ var
+  i,b:integer;
+  str:string;
+ begin
+  repeat
+   b:=read_byte;
+   if b=0 then break;
+   str:=str+chr(b);
+  until false;
+  readstr:=str;
+ end;
+
+//Получение точки спавна
+ function get_spawn_x:integer;
+  begin
+   get_spawn_x:=(255 div 2);
+  end;
+
+ function get_spawn_y:integer;
+  var
+   iy:integer;
+  begin
+   for iy:=0 to 127 do
+    if getmap(get_spawn_x,iy)<>0 then begin get_spawn_y:=(iy-2); break; end;
+  end;
+
+ procedure drawSmallItem(item, x, y:integer);
+  begin
+   if getItemTexType(item)=0 then
+    drawimage(tex8[getBlockTex(item)], x, y);
+   else
+   if getItemTexType(item)=1 then
+    drawimage(item8[getItemTex(item)], x, y);
+  end;
+
+ procedure draw_block(xx,yy:integer);
+  begin
+   if (getmap(xx,yy)=123) or (getmap(xx,yy)=124) then
+    begin
+     setclip((xx*16)-camx,(yy*16)-camy,16,16);
+     if getmapinfo(xx,yy)<9 then drawimage(tex[142],(xx*16)-camx,(yy*16)-camy+(16-getmapinfo(xx,yy)*2)); else
+     if getmapinfo(xx,yy)=9 then drawimage(tex[143],(xx*16)-camx,(yy*16)-camy);
+     setclip(0,0,getwidth,getheight);
+    end; else
+   if (getmap(xx,yy)=92) or (getmap(xx,yy)=93) then
+    begin
+     if (getBlockSet(getmap(xx-1,yy))=false) and (getBlockSet(getmap(xx+1,yy))=true) then setclip((xx*16)-camx,(yy*16)-camy,10,16); else
+     if (getBlockSet(getmap(xx+1,yy))=false) and (getBlockSet(getmap(xx-1,yy))=true) then setclip((xx*16)-camx+6,(yy*16)-camy,10,16); else
+     if (getBlockSet(getmap(xx+1,yy))=true) and (getBlockSet(getmap(xx-1,yy))=true) then setclip((xx*16)-camx+6,(yy*16)-camy,4,16);
+     drawimage(tex[getBlockTex(getmap(xx,yy))],(xx*16)-camx,(yy*16)-camy);
+     setclip(0,0,getwidth,getheight);
+    end; else
+   if getmap(xx,yy)=27 then
+    begin
+     drawimage(tex[getBlockTex(getmap(xx,yy))],(xx*16)-camx,(yy*16)-camy);
+     if getmapinfo(xx,yy)<>0 then begin if random(8)<random(6) then begin setcolor(255,255,255); fillrect((xx*16)-camx,(yy*16)-camy,16,16); end; end;
+    end; else
+   if getmap(xx,yy)=50 then
+    begin
+     drawimage(tex[getBlockTex(getmap(xx,yy))+bl_ani5],(xx*16)-camx,(yy*16)-camy);
+    end; else
+   if getmap(xx,yy)=51 then
+    begin
+     drawimage(tex[getBlockTex(getmap(xx,yy))+bl_ani5],(xx*16)-camx,(yy*16)-camy);
+    end; else
+   if getmap(xx,yy)=110 then
+    begin
+     drawimage(tex[getBlockTex(getmap(xx,yy))+bl_ani5],(xx*16)-camx,(yy*16)-camy);
+   end; else
+   /*if getmap(xx,yy)=106 then
+    begin
+     if (furnace_gg[getmapinfo(xx,yy)].f_gor<15) or (furnace_gg[getmapinfo(xx,yy)].f_got>0) then
+      drawimage(tex[134],xx*16-camx,yy*16-camy);
+     else
+      drawimage(tex[get_block(0,getmap(xx,yy))],(xx*16)-camx,(yy*16)-camy);
+    end; else*/
+   if getmap(xx,yy)=121 then
+    begin
+     setclip((xx*16)-camx,(yy*16)-camy,getmapinfo(xx,yy),16);
+     drawimage(tex[getBlockTex(getmap(xx,yy))],(xx*16)-camx,(yy*16)-camy);
+     setclip(0,0,getWidth,getHeight);
+    end; else
+   if getmap(xx,yy)=122 then
+    begin
+     drawimage(tex[getBlockTex(getmap(xx,yy))+getmapinfo(xx,yy)],(xx*16)-camx,(yy*16)-camy);
+    end; else
+   if getmap(xx,yy)<>0 then
+    drawimage(tex[getBlockTex(getmap(xx,yy))],(xx*16)-camx,(yy*16)-camy);
+  end;
+
+ procedure drawItem(item, sum, x, y:integer; indicator:boolean;);
+  var
+   pa_xo,ugol:integer;
+  begin
+   if sum>0 then
+    begin
+     if getItemTexType(item)=0 then
+      drawimage(tex[getBlockTex(item)], x, y);
+      else
+     if getItemTexType(item)=1 then
+      drawimage(vars.item[getItemTex(item)], x, y);
+
+     if item=216 then
+      begin
+       drawimage(compas, x, y);
+       setcolor(255,0,0);
+       setclip(x+2, y+2, 12, 10);
+       if pl_world=0 then
+        drawline(get_spawn_x*16-camx, get_spawn_y*16-camy, x+8, y+7);
+        else
+       if pl_world=1 then
+        drawline(random(getWidth), random(getHeight), x+8, y+7);
+       setclip(0, 0, getWidth, getheight);
+      end;
+     else
+     if item=215 then
+      begin
+       drawimage(clock[clock_stage], x, y);
+      end;
+    end;
+
+   if (sum>1) and indicator then
+    begin
+     if getItemIndLine(item) then
+      begin
+       pa_xo:=10000*16/getItemMax(item)*sum/10000;
+       if pa_xo<=3 then
+        setcolor(255,0,0);
+       else
+        setcolor(0,255,0);
+       drawline(x, y+14, x+pa_xo, y+14);
+      end;
+
+     if getItemIndNum(item) then
+      drawfonttext(''+sum, x, y+8);
+    end;
+  end;
+
+
+//Загрузка шрифта из файла под именем s
+procedure LoadDrawFont(s:string);
+ var
+  ix:integer;
+  im:image;
+ begin
+  im:=ld_tex('default_font.png', s, '');
+  for ix:=0 to FONT_MAX_SYM do
+   font[ix]:=rotate_image_from_image(im, ix*FONT_SYM_SIZE, 0, FONT_SYM_SIZE, FONT_SYM_SIZE, 0);
+  //Шрифт перезагружен - сбрасываем кеш окрашенных символов
+  for ix:=0 to 127 do
+   yellowset[ix]:=false;
+ end;
+
+//Рисование текста графическим шрифтом
+procedure DrawFontTextSpec(str:string; x, y, color:integer; spec:boolean;);
+ const
+  FONT_UNKNOWN_SYM=$3F;
+  FONT_SPEC_SYM=$FFA7;//UTF8
+ var
+  ch, i, spec_c:integer;
+  tch:char;
+ begin
+  for i:=0 to length(str)-1 do
+   begin
+    ch:=ord(getChar(str, i));
+
+    if (spec) and (ch=FONT_SPEC_SYM) then
+     begin
+      
+      i:=i+1;
+      if i<=length(str)-2 then
+       begin
+        ch:=ord(getChar(str, i+1));
+        tch:=getChar(UpCase(str), i);
+        if tch='0' then
+         color:=$FF000000;
+        else
+        if tch='1' then
+         color:=$FF0000AA;
+        else
+        if tch='2' then
+         color:=$FF00AA00;
+        else
+        if tch='3' then
+         color:=$FF00AAAA;
+        else
+        if tch='4' then
+         color:=$FFAA0000;
+        else
+        if tch='5' then
+         color:=$FFAA00AA;
+        else
+        if tch='6' then
+         color:=$FFAA5500;
+        else
+        if tch='7' then
+         color:=$FFAAAAAA;
+        else
+        if tch='8' then
+         color:=$FF555555;
+        else
+        if tch='9' then
+         color:=$FF5555FF;
+        else
+        if tch='A' then
+         color:=$FF55FF55;
+        else
+        if tch='B' then
+         color:=$FF55FFFF;
+        else
+        if tch='C' then
+         color:=$FFFF5555;
+        else
+        if tch='D' then
+         color:=$FFFF55FF;
+        else
+        if tch='E' then
+         color:=$FFFFFF55;
+        else
+        if tch='F' then
+         color:=$FFFFFFFF;
+        else
+         begin
+          i:=i-2;
+          ch:=ord(getChar(str, i));
+          spec_c:=spec_c-2;
+         end;
+
+        i:=i+1;
+        spec_c:=spec_c+2;
+       end;
+     end;
+
+    if ch>FONT_MAX_SYM then
+     ch:=FONT_UNKNOWN_SYM;
+
+    if color=FONT_STD_COLOR then
+     DrawImage(font[ch],x+((i-spec_c)*FONT_SYM_SIZE),y)
+    else
+    if color=FONT_YELLOW_COLOR then
+     begin
+      if yellowset[ch]=false then
+       begin
+        yellowfont[ch]:=ReplaceImgColor(font[ch], FONT_STD_COLOR, color);
+        yellowset[ch]:=true;
+       end;
+      DrawImage(yellowfont[ch], x+((i-spec_c)*FONT_SYM_SIZE), y);
+     end
+    else
+     DrawImage(ReplaceImgColor(font[ch], FONT_STD_COLOR, color), x+((i-spec_c)*FONT_SYM_SIZE), y);
+   end;
+ end;
+
+//Рисование текста графическим шрифтом со стандартным цветом
+procedure DrawFontText(str:string; x, y:integer);
+ begin
+  DrawFontTextSpec(str, x, y, FONT_STD_COLOR, true);
+ end;
+
+
+end.

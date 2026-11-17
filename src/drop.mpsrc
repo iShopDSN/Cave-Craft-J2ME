@@ -1,0 +1,214 @@
+unit drop;
+
+interface
+ var
+  drp_phy, drw_drp, ref_drp:boolean;
+
+ function max:integer;
+ function getX(i:integer):integer;
+ function getY(i:integer):integer;
+ function getW:integer;
+ function getH:integer;
+ function getItem(i:integer):integer;
+ function getSum(i:integer):integer;
+ procedure setItem(val, i:integer);
+ procedure setSum(val, i:integer);
+ function isNull(i:integer):boolean;
+ procedure fixNull(i:integer);
+
+ procedure draw(camx, camy:integer);
+ procedure calcPhy;
+ procedure reflux;
+
+ procedure create(item, sum, x, y:integer);
+ procedure resetData;
+ procedure saveData;
+ procedure loadData;
+
+implementation
+ uses phy, jsr75i, vars, items_store, items, func;
+ const
+  MAX_DROP=255;
+  DROP_W=8;
+  DROP_H=8;
+ var
+  drop_x, drop_y, drop_vely: array [0..MAX_DROP] of integer;
+  drop_item, drop_sum: array [0..MAX_DROP] of integer;
+
+  old_drop, ref_drp_count:integer;
+
+ function max:integer;
+  begin
+   max:=MAX_DROP;
+  end;
+
+ function getX(i:integer):integer;
+  begin
+   getX:=drop_x[i];
+  end;
+
+ function getY(i:integer):integer;
+  begin
+   getY:=drop_y[i];
+  end;
+
+ function getW:integer;
+  begin
+   getW:=DROP_W;
+  end;
+
+ function getH:integer;
+  begin
+   getH:=DROP_H;
+  end;
+
+ function getItem(i:integer):integer;
+  begin
+   getItem:=drop_item[i];
+  end;
+
+ function getSum(i:integer):integer;
+  begin
+   getSum:=drop_sum[i];
+  end;
+
+ procedure setItem(val, i:integer);
+  begin
+   drop_item[i]:=val;
+  end;
+
+ procedure setSum(val, i:integer);
+  begin
+   drop_sum[i]:=val;
+  end;
+
+ function isNull(i:integer):boolean;
+  begin
+   if (drop_item[i]<1) or (drop_sum[i]<1) then
+    isNull:=true;
+  end;
+
+ procedure fixNull(i:integer);
+  begin
+   if isNull(i) then
+    begin
+     drop_item[i]:=0;
+     drop_sum[i]:=0;
+    end;
+  end;
+
+ procedure create(item, sum, x, y:integer);
+  var
+   i:integer;
+  begin
+   for i:=0 to MAX_DROP do
+    if isNull(i) then
+     begin
+      drop_item[i]:=item;
+      drop_sum[i]:=sum;
+      drop_x[i]:=x;
+      drop_y[i]:=y;
+      drop_vely[i]:=0;
+      exit;
+     end;
+
+  drop_item[old_drop]:=item;
+  drop_sum[old_drop]:=sum;
+  drop_x[old_drop]:=x;
+  drop_y[old_drop]:=y;
+  drop_vely[old_drop]:=0;
+
+  old_drop:=old_drop+1;
+  if old_drop>MAX_DROP then
+   old_drop:=0;
+ end;
+
+ procedure calcPhy;
+  var
+   i:integer;
+  begin
+   if drp_phy then
+    for i:=0 to MAX_DROP do
+     if isNull(i)=false then
+      begin
+       calcNJGravY(drop_x[i], drop_y[i], DROP_W, DROP_H, CONST_PHY_ACC, drop_vely[i], CONST_PHY_MAXVEL);
+       drop_y[i]:=PhyGetY;
+       drop_vely[i]:=PhyGetVelY;
+      end;
+  end;
+
+ procedure draw(camx, camy:integer);
+  var
+   i:integer;
+  begin
+   if drw_drp then
+    for i:=0 to MAX_DROP do
+     if isNull(i)=false then
+      //Оптимизация: рисуем только видимые дропы
+      if (drop_x[i]-camx>-8) and (drop_x[i]-camx<getwidth) and (drop_y[i]-camy>-8) and (drop_y[i]-camy<getheight) then
+       drawSmallItem(drop_item[i], drop_x[i]-camx, drop_y[i]-camy);
+   end;
+
+ procedure reflux;
+  var
+   i:integer;
+  begin
+   if ref_drp then
+    begin
+     for i:=ref_drp_count+1 to MAX_DROP do
+      if (isNull(ref_drp_count) and isNull(i))=false then
+       if (drop_item[ref_drp_count]=drop_item[i]) and (drop_x[ref_drp_count]=drop_x[i]) and (drop_y[ref_drp_count]=drop_y[i]) then
+        begin
+         drop_sum[ref_drp_count]:=drop_sum[ref_drp_count]+drop_sum[i];
+         drop_item[i]:=0;
+         drop_sum[i]:=0;
+        end;
+
+    ref_drp_count:=ref_drp_count+1;
+    if ref_drp_count>MAX_DROP then ref_drp_count:=0;
+   end;
+  end;
+
+ procedure resetData;
+  var
+   i:integer;
+  begin
+   for i:=0 to MAX_DROP do
+    begin
+     drop_item[i]:=0;
+     drop_sum[i]:=0;
+     drop_x[i]:=0;
+     drop_y[i]:=0;
+     drop_vely[i]:=0;
+    end;
+  end;
+
+ procedure saveData;
+  var
+   i:integer;
+  begin
+   for i:=0 to MAX_DROP do
+    begin
+     write_byte(drop_item[i]);
+     writeint(drop_sum[i]);
+     writeint(drop_x[i]);
+     writeint(drop_y[i]);
+     write_byte(drop_vely[i]);
+    end;
+  end;
+
+ procedure loadData;
+  var
+   i:integer;
+  begin
+   for i:=0 to MAX_DROP do
+    begin
+     drop_item[i]:=read_byte;
+     drop_sum[i]:=ReadInt;
+     drop_x[i]:=ReadInt;
+     drop_y[i]:=ReadInt;
+     drop_vely[i]:=read_byte;
+    end;
+  end;
+
+end.

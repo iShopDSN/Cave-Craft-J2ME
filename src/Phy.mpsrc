@@ -1,0 +1,247 @@
+unit Phy;
+
+interface
+ const
+  Tsiz=16;
+  CONST_PHY_ACC=1;
+  CONST_PHY_MAXVEL=32;
+
+ function isSolidB(x,y:integer):boolean;
+ function CollObj(x,y,w,h:integer):boolean;
+ function CollObjBlock(x,y,w,h,id:integer):boolean;
+ function CollTwoObj(x1,y1,w1,h1,x2,y2,w2,h2:integer):boolean;
+ procedure calcGravY(x,y,w,h,acc,vely,max:integer; jmp:boolean);
+ function PhyGetX:integer;
+ function PhyGetY:integer;
+ function PhyGetVelX:integer;
+ function PhyGetVelY:integer;
+ function PhyGetJump:boolean;
+ function PhyGetColl:boolean;
+ function moveObjX(x,y,w,h,acc:integer):integer;
+ procedure jumpObjY(vely,jmpvely:integer; jmp:boolean);
+ function CollObjXY(x,y,w,h,xx,yy:integer):boolean;
+ procedure calcNJGravY(x,y,w,h,acc,vely,max:integer);
+
+implementation
+uses maps, items, items_store;
+var
+ PhyGravInfo:array [0..3] of integer;
+ PhyGravInfoJmp,PhyGravInfoColl:boolean;
+
+function isSolidB(x,y:integer):boolean;
+ begin
+  isSolidB:=getBlockColl(GetMap(x,y))>0;
+ end;
+
+function CollObj(x,y,w,h:integer):boolean;
+ var
+  ix,iy:integer;
+  minix,miniy,maxix,maxiy:integer;
+ begin
+  minix:=x div Tsiz;
+  miniy:=y div Tsiz;
+  maxix:=(x+w-1) div Tsiz;
+  maxiy:=(y+h-1) div Tsiz;
+  for ix:=minix to maxix do
+  for iy:=miniy to maxiy do
+   begin
+    if isSolidB(ix,iy) then
+     begin
+      CollObj:=true;
+      exit;
+     end;
+   end;
+ end;
+
+function CollObjBlock(x,y,w,h,id:integer):boolean;
+ var
+  ix,iy:integer;
+  minix,miniy,maxix,maxiy:integer;
+ begin
+  minix:=x div Tsiz;
+  miniy:=y div Tsiz;
+  maxix:=(x+w-1) div Tsiz;
+  maxiy:=(y+h-1) div Tsiz;
+  for ix:=minix to maxix do
+  for iy:=miniy to maxiy do
+   begin
+    if GetMap(ix,iy)=id then
+     begin
+      CollObjBlock:=true;
+      exit;
+     end;
+   end;
+ end;
+
+function CollObjXY(x,y,w,h,xx,yy:integer):boolean;
+ var
+  ix,iy:integer;
+  minix,miniy,maxix,maxiy:integer;
+ begin
+  minix:=x div Tsiz;
+  miniy:=y div Tsiz;
+  maxix:=(x+w-1) div Tsiz;
+  maxiy:=(y+h-1) div Tsiz;
+  for ix:=minix to maxix do
+  for iy:=miniy to maxiy do
+   begin
+    if (xx=ix) and (yy=iy) then
+     begin
+      CollObjXY:=true;
+      exit;
+     end;
+   end;
+ end;
+
+function CollTwoObj(x1,y1,w1,h1,x2,y2,w2,h2:integer):boolean;
+ begin
+  if (x1+w1>x2) and (x1<x2+w2) and (y1+h1>y2) and (y1<y2+h2) then
+   CollTwoObj:=true;
+ end;
+
+procedure calcGravY(x,y,w,h,acc,vely,max:integer; jmp:boolean);
+ var
+  ty,i:integer;
+  cc:boolean;
+ begin
+  ty:=y;
+  if vely<max then
+   begin
+    vely:=vely-acc;
+    if vely>max then vely:=max;
+   end;
+  if vely<0 then
+  for i:=1 to abs(vely) do
+   begin
+    ty:=ty+1;
+    if CollObj(x,ty,w,h) then
+     begin
+      ty:=ty-1;
+      vely:=0;
+      cc:=true;
+      if acc>0 then jmp:=false;
+      break;
+     end; else jmp:=true;
+   end; else
+  if vely>0 then
+  for i:=1 to abs(vely) do
+   begin
+    ty:=ty-1;
+    if CollObj(x,ty,w,h) then
+     begin
+      ty:=ty+1;
+      vely:=0;
+      cc:=true;
+      if acc<0 then jmp:=false;
+      break;
+     end; else jmp:=true;
+   end;
+
+  PhyGravInfo[1]:=ty;
+  PhyGravInfo[3]:=vely;
+  PhyGravInfoJmp:=jmp;
+  PhyGravInfoColl:=cc;
+ end;
+
+procedure calcNJGravY(x,y,w,h,acc,vely,max:integer);
+ var
+  ty,i:integer;
+  cc:boolean;
+ begin
+  ty:=y;
+  if vely<max then
+   begin
+    vely:=vely-acc;
+    if vely>max then vely:=max;
+   end;
+
+  for i:=1 to abs(vely) do
+   begin
+    ty:=ty+1;
+    if CollObj(x,ty,w,h) then
+     begin
+      ty:=ty-1;
+      vely:=0;
+      cc:=true;
+      break;
+     end;
+   end;
+
+  PhyGravInfo[1]:=ty;
+  PhyGravInfo[3]:=vely;
+  PhyGravInfoColl:=cc;
+ end;
+
+function PhyGetX:integer;
+ begin
+  PhyGetX:=PhyGravInfo[0];
+ end;
+
+function PhyGetY:integer;
+ begin
+  PhyGetY:=PhyGravInfo[1];
+ end;
+
+function PhyGetVelX:integer;
+ begin
+  PhyGetVelX:=PhyGravInfo[2];
+ end;
+
+function PhyGetVelY:integer;
+ begin
+  PhyGetVelY:=PhyGravInfo[3];
+ end;
+
+function PhyGetJump:boolean;
+ begin
+  PhyGetJump:=PhyGravInfoJmp;
+ end;
+
+function PhyGetColl:boolean;
+ begin
+  PhyGetColl:=PhyGravInfoColl;
+ end;
+
+function moveObjX(x,y,w,h,acc:integer):integer;
+ var
+  tx,i:integer;
+ begin
+  tx:=x;
+  if acc>0 then
+   for i:=1 to abs(acc) do
+    begin
+     tx:=tx+1;
+     if CollObj(tx,y,w,h) then
+      begin
+       PhyGravInfoColl:=true;
+       moveObjX:=tx-1;
+       exit;
+      end;
+    end; else
+  if acc<0 then
+   for i:=1 to abs(acc) do
+    begin
+     tx:=tx-1;
+     if CollObj(tx,y,w,h) then
+      begin
+       PhyGravInfoColl:=true;
+       moveObjX:=tx+1;
+       exit;
+      end;
+    end;
+  PhyGravInfoColl:=false;
+  moveObjX:=tx;
+ end;
+
+procedure jumpObjY(vely,jmpvely:integer; jmp:boolean);
+ begin
+  if jmp=false then
+   begin
+    jmp:=true;
+    vely:=vely+jmpvely;
+   end;
+  PhyGravInfo[3]:=vely;
+  PhyGravInfoJmp:=jmp;
+ end;
+
+end.

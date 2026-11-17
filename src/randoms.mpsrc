@@ -1,0 +1,40 @@
+//Этот модуль можно свободно распространять, изменять и использовать в своих проектах без указания автора оригинала.
+//Во избежание глюков и багов не именяйте этот модуль
+unit randoms;
+
+interface
+ procedure srand(s:integer);//Устанавливает зерно для ГПСЧ
+ function rand:integer;//Возвращает случайное число
+ function rnd(max:integer):integer;//Возвращает число от 0 до max
+ function rnd_pr(pr,p1,p2:integer):integer;
+
+implementation
+ var
+  next:integer;
+
+ function rand:integer;
+  begin
+   next:=next xor (next << 13);
+   next:=next xor (next >>> 17);
+   next:=next xor (next << 5);
+   //Сброс старшего бита: abs(-2147483648) даёт отрицательное число
+   rand:=next and $7FFFFFFF;
+  end;
+
+ procedure srand(s:integer);
+  begin
+   //Debug('srand('+s+')');
+   next:=s;
+  end;
+
+ function rnd(max:integer):integer;
+  begin
+   rnd:=rand mod max;
+  end;
+
+ function rnd_pr(pr,p1,p2:integer):integer;
+  begin
+   if pr>=rnd(101) then rnd_pr:=p1; else rnd_pr:=p2;
+  end;
+
+end.

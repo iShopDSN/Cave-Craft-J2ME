@@ -1,0 +1,120 @@
+unit menu_ui;
+
+interface
+ const
+  MENU_EL_NULL=0;
+  MENU_EL_BUTTON=1;
+
+  MENU_ERROR=-1;
+
+  MENU_SCAN_UP=0;
+  MENU_SCAN_DOWN=1;
+  MENU_SCAN_LEFT=2;
+  MENU_SCAN_RIGHT=3;
+
+implementation
+ const
+  MAX_MENU_ELEMENTS=31;
+
+ var
+  menu_el_type: array [0..MAX_MENU_ELEMENTS] of integer;
+  menu_el_act: array [0..MAX_MENU_ELEMENTS] of boolean;
+  menu_el_x: array [0..MAX_MENU_ELEMENTS] of integer;
+  menu_el_y: array [0..MAX_MENU_ELEMENTS] of integer;
+
+ function addMenuElement(el:integer; active:boolean; x, y:integer):integer;
+  var
+   i:integer;
+  begin
+   for i:=0 to MAX_MENU_ELEMENTS do
+    if menu_el_type[i]=MENU_EL_NULL then
+     begin
+      menu_el_type[i]:=el;
+      menu_el_act[i]:=active;
+      menu_el_x[i]:=x;
+      menu_el_y[i]:=y;
+      addMenuElement:=i;
+      exit;
+     end;
+
+   addMenuElement:=MENU_ERROR;
+  end;
+
+ procedure deleteMenuElement(i:integer);
+  begin
+   menu_el_type[i]:=MENU_EL_NULL;
+   menu_el_act[i]:=false;
+   menu_el_x[i]:=0;
+   menu_el_y[i]:=0;
+  end;
+
+ procedure clearMenuElements;
+  var
+   i:integer;
+  begin
+   for i:=0 to MAX_MENU_ELEMENTS do
+    begin
+     menu_el_type[i]:=MENU_EL_NULL;
+     menu_el_act[i]:=false;
+     menu_el_x[i]:=0;
+     menu_el_y[i]:=0;
+    end;
+  end;
+
+ function getMenuElementType(i:integer):integer;
+  begin
+   getMenuElementType:=menu_el_type[i];
+  end;
+
+ function getMenuElementActive(i:integer):boolean;
+  begin
+   getMenuElementActive:=menu_el_act[i];
+  end;
+
+ function getMenuElementX(i:integer):integer;
+  begin
+   getMenuElementX:=menu_el_x[i];
+  end;
+
+ function getMenuElementY(i:integer):integer;
+  begin
+   getMenuElementY:=menu_el_y[i];
+  end;
+
+
+ procedure setMenuElementActive(act:boolean; i:integer);
+  begin
+   menu_el_act[i]:=act;
+  end;
+
+ procedure setMenuElementX(x, i:integer);
+  begin
+   menu_el_x[i]:=x;
+  end;
+
+ procedure setMenuElementY(y, i:integer);
+  begin
+   menu_el_y[i]:=y;
+  end;
+
+ /*function scanMenuElement(how, id:integer):integer;
+  var
+   i, tmp_idy:integer;
+  begin
+   MENU_SCAN_UP=0;
+  MENU_SCAN_DOWN=1;
+  MENU_SCAN_LEFT=2;
+  MENU_SCAN_RIGHT=3;
+
+   if how=MENU_SCAN_UP then
+    begin
+     tmp_idy:=id
+     for i:=0 to MAX_MENU_ELEMENTS do
+      if (menu_el_type[i]<>MENU_EL_NULL) and (i<>id) and (menu_el_act[i]=true) then
+       begin
+
+       end;
+    end;
+  end;*/
+
+end.

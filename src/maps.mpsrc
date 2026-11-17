@@ -1,0 +1,78 @@
+//Этот модуль можно свободно распространять, изменять и использовать в своих проектах без указания автора оригинала.
+unit maps;
+
+interface
+//Функции содержат защиту от дурака
+ procedure setBackMap(n, x:integer);
+ function getBackMap(x:integer):integer;
+ procedure setBiomMap(n, x:integer);
+ function getBiomMap(x:integer):integer;
+ function getmap(x,y:integer):integer;
+ procedure setmap(l,x,y:integer);
+ function getmapinfo(x,y:integer):integer;
+ procedure setmapinfo(l,x,y:integer);
+ function getmaplight(x,y:integer):integer;
+ procedure setmaplight(l,x,y:integer);
+
+implementation
+ uses cavemaps;
+ var
+  {map:array [0..255,0..127] of integer;//Содержит индификатор блока(id)
+  i_map:array [0..255,0..127] of integer;//Содержит какую нибудь информацию о блоке, например для блока 28 содержится ид сундука
+  l_map:array [0..255,0..127] of integer;//Карта света, содержит уровень света в указанной ячейке}
+  back_map:array [0..255] of integer;//Уровень фона
+  biom_map:array [0..255] of integer;//Содержит ID биома
+
+ procedure setBackMap(n, x:integer);
+  begin
+   back_map[x]:=n;
+  end;
+
+ function getBackMap(x:integer):integer;
+  begin
+   getBackMap:=back_map[x];
+  end;
+
+ procedure setBiomMap(n, x:integer);
+  begin
+   biom_map[x]:=n;
+  end;
+
+ function getBiomMap(x:integer):integer;
+  begin
+   getBiomMap:=biom_map[x];
+  end;
+
+ function getmap(x,y:integer):integer;
+  begin
+    getmap:=cavemaps.get_map(x,y);
+  end;
+
+ procedure setmap(l,x,y:integer);
+  begin
+    cavemaps.set_map(l,x,y);
+  end;
+
+function getmapinfo(x,y:integer):integer;
+  begin
+    getmapinfo:=cavemaps.get_i_map(x,y);
+  end;
+
+ procedure setmapinfo(l,x,y:integer);
+  begin
+    cavemaps.set_i_map(l,x,y);
+  end;
+
+ function getmaplight(x,y:integer):integer;
+  begin
+    getmaplight:=cavemaps.get_l_map(x,y);
+  end;
+
+ procedure setmaplight(l,x,y:integer);
+  begin
+    if l>15 then cavemaps.set_l_map(15,x,y); else
+    if l<0 then cavemaps.set_l_map(0,x,y); else
+     cavemaps.set_l_map(l,x,y);
+  end;
+
+end.

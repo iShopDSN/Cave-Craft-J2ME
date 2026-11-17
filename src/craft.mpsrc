@@ -1,0 +1,92 @@
+unit craft;
+
+interface
+ procedure createCraft(id, mode:integer);
+ function canCreateCraft(id, mode:integer):boolean;
+
+implementation
+ uses vars, items, func, player, inv, items_store;
+
+procedure createCraft(id, mode:integer);
+ var
+  i, j, tmp_sum, tmp_s, item, sum:integer;
+ begin
+  if canCreateCraft(id, mode)=false then
+   exit;
+
+  //Выпиливаем все необходимые предметы
+  for i:=0 to 3 do
+   begin
+    tmp_sum:=getCraftInSum(id, i);
+    for j:=0 to INV_SIZE do
+     begin
+      item:=inv.getItem(j);
+      sum:=inv.getSum(j);
+
+      if getCraftInItem(id, i)=item then
+       begin
+        tmp_s:=tmp_sum-sum;
+
+        if tmp_s<1 then
+         begin
+          sum:=sum-tmp_sum;
+          inv.setSum(sum, j);
+          inv.fixNull(j);
+          break;
+         end;
+        else
+         begin
+          sum:=0;
+          tmp_sum:=tmp_s;
+          inv.setSum(sum, j);
+          inv.fixNull(j);
+         end;
+       end;
+     end;
+   end;
+
+  item:=getCraftOutItem(id);
+  sum:=getCraftOutSum(id);
+
+  sum:=inv.giveItem(item, sum);
+  if sum>0 then
+   player.dropItem(item, sum);
+ end;
+
+//Проверка, может ли игрок сделать этот крафт.
+function canCreateCraft(id, mode:integer):boolean;
+ var
+  i, j, tmp_sum:integer;
+  canCreate:boolean;
+ begin
+  //Если место крафта подходит, то продолжаем крафт
+  if mode>=getCraftOutFlag(id) then
+   canCreate:=true;
+  else
+   exit;
+
+  //Проверяем каждую ячейку крафта
+  for i:=0 to 3 do
+   begin
+    //Получаем общуюю сумму подходящего предмета
+    tmp_sum:=0;
+    if getCraftInItem(id, i)>0 then
+     begin
+      for j:=0 to INV_SIZE do
+       begin
+        if getCraftInItem(id, i)=inv.getItem(j) then
+         tmp_sum:=tmp_sum+inv.getSum(j);
+       end;
+
+      //Проверяем, подходит ли количество предметов
+      if tmp_sum>=getCraftInSum(id, i) then
+       canCreate:=canCreate and true;
+      else
+       exit;
+     end;
+   end;
+
+  canCreateCraft:=canCreate;
+ end;
+
+end.

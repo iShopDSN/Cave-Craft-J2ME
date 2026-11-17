@@ -1,0 +1,3406 @@
+program CAVE;
+
+uses
+ jsr75i,
+ drop,
+ invui,
+ vars,
+ particles_store,
+ randoms,
+ memory,
+ worldgen,
+ canvas,
+ items,
+ safeload,
+ mobs,
+ console,
+ effects,
+ testspawn,
+ particles,
+ keyboard,
+ maps,
+ phy,
+ utils,
+ func,
+ CellUI,
+ furnace,
+ player,
+ items_logic,
+ chest,
+ inv,
+ items_store,
+ video;
+
+const
+ version='BETA 9.1';
+ version_map=8;
+
+var
+ keymode,updx,updy:integer;
+ seed,nextseed:integer;
+ free_ram:real;
+
+ light:array [0..15] of image;
+ bg:array[0..1] of image;
+ osad:array [0..1,0..7] of image;
+ back:array [0..8] of image;
+ gui:array [0..34] of image;
+ tue:array [0..9] of image;
+ 
+ sign_im:image;
+ sky:image;
+ sun:image;
+ moon:image;
+ moon_phase:integer;
+ toolus,toolind:integer;
+ osadki_ani:integer;
+ osadki_scr:integer;//Плавная прокрутка осадков (смещение в пикселях)
+ sd,sav_fl:string;
+ global_light:integer;
+ world_typ:integer;
+ float:image;
+
+ msg:array [0..4] of string;
+ msg_time:array[0..4] of integer;
+ last_sleep_x,last_sleep_y:integer;
+
+ ifminimap:boolean;
+ gt:integer;
+
+ del,dt,time,light_tick:integer;
+
+ deb:boolean;
+
+procedure newworld;
+ var
+  ix,iy:integer;
+ begin
+  if nextseed=0 then seed:=getrelativetimems; else seed:=nextseed;
+  nextseed:=0;
+  srand(seed);
+  if world_typ=0 then genworld;
+  else
+  if world_typ=1 then genflat;
+  world_typ:=0;
+  player.setX(get_spawn_x*16+4);
+  player.setY(get_spawn_y*16);
+  pl_world:=0;
+ end;
+
+procedure drwrect(x,y,w,h,t:integer);
+ var
+  i:integer;
+ begin
+  for i:=0 to t do
+  drawrect(x+i,y+i,w-i*2,h-i*2);
+ end;
+
+procedure proc_fps;
+ begin
+  dt:=GetRelativeTimeMs - time;
+  if dt<1 then dt:=1;
+  time:=GetRelativeTimeMs;
+  fps:=1000/dt;
+ end;
+
+procedure maxfps;
+ begin
+  if fps<s_max_fps then if del>0 then del:=del-1;
+  if fps>s_max_fps then if del<200 then del:=del+1;
+  delay(del);
+ end;
+
+procedure cleartextures;
+ var
+  no:image;
+  ix,iy,iz:integer;
+ begin
+  bg[0]:=no;
+  bg[1]:=no;
+  float:=no;
+  compas:=no;
+  for ix:=0 to 7 do clock[ix]:=no;
+
+  /*for ix:=0 to maxBlockTex do
+   begin
+    tex[ix]:=no;
+    tex8[ix]:=no;
+   end;
+  for ix:=0 to maxItemTex do
+   begin
+    item[ix]:=no;
+    item8[ix]:=no;
+   end;*/
+ for ix:=0 to 8 do back[ix]:=no;
+
+  for ix:=0 to 1 do
+  for iy:=0 to 9 do
+   begin
+    zomb[ix,iy]:=no;
+    pigman[ix,iy]:=no;
+   end;
+
+  player.freeSkin;
+
+   for ix:=0 to 1 do
+   for iy:=0 to 2 do
+    begin
+     pig[ix,iy]:=no;
+     sheep[ix,iy]:=no;
+     creeper[ix,iy]:=no;
+     chicken[ix,iy]:=no;
+     cow1[ix,iy]:=no;
+     cow2[ix,iy]:=no;
+     spider[ix,iy]:=no;
+    end;
+  sheep[0,3]:=no; sheep[1,3]:=no;
+
+  for ix:=0 to 34 do
+   gui[ix]:=no;
+
+  for ix:=0 to 9 do tue[ix]:=no;
+
+  for ix:=0 to 7 do osad[0,ix]:=no;
+  for ix:=0 to 7 do osad[1,ix]:=no;
+  for ix:=0 to 7 do snow8[ix]:=no;
+
+  for ix:=0 to 15 do light[ix]:=no;
+
+  for ix:=0 to 7 do
+   begin
+    pr_1[ix]:=no;
+    pr_2[ix]:=no;
+    pr_3[ix]:=no;
+    pr_4[ix]:=no;
+    pr_5[ix]:=no;
+   end;
+  bubble:=no;
+
+
+  for ix:=0 to 15 do
+   pr_boom[ix]:=no;
+
+  sky:=no;
+
+  sun:=no;
+  moon:=no;
+
+  sign_im:=no;
+
+  for ix:=0 to CONST_MAX_CURS do
+   LoadCurImg(no, ix);
+
+  //resetVirtualKeyboard(-1);
+ end;
+
+procedure create_msg(s:string);
+ var
+  i,t:integer;
+ begin
+  for i:=3 downto 0 do
+   begin
+    if i=0 then break;
+    msg_time[i]:=msg_time[i-1];
+    msg[i]:=msg[i-1];
+   end;
+  msg_time[0]:=getrelativetimems;
+  msg[0]:=s;
+ end;
+
+procedure loadtexture(path:string);
+ var
+  ix,iy,iz:integer;
+  im:image;
+ begin
+  cleartextures;
+  im:=ld_tex('background.png',path,'title/');
+  for ix:=0 to 1 do
+  bg[ix]:=rotate_image_from_image(im,ix*16,0,16,16,0);
+  float:=ld_tex('float.png',path,'gui/');
+  compas:=ld_tex('compass.png',path,'gui/');
+  im:=ld_tex('clock.png',path,'gui/');
+  for ix:=0 to 7 do clock[ix]:=rotate_image_from_image(im,ix*16,0,16,16,0);
+  /*im:=ld_tex('terrain.png',path,'');
+  iz:=0;
+  for iy:=0 to 15 do
+  for ix:=0 to 15 do
+   begin
+    if iz>maxBlockTex then break;
+    tex[iz]:=rotate_image_from_image(im,ix*16,iy*16,16,16,0);
+    tex8[iz]:=resize_image(tex[iz],8,8);
+    iz:=iz+1;
+   end;
+  im:=ld_tex('items.png',path,'gui/');
+  iz:=0;
+  for iy:=0 to 15 do
+  for ix:=0 to 15 do
+   begin
+    if iz>maxItemTex then break;
+    item[iz]:=rotate_image_from_image(im,ix*16,iy*16,16,16,0);
+    item8[iz]:=resize_image(item[iz],8,8);
+    iz:=iz+1;
+   end;*/
+  if load_back_tex then
+   begin
+    im:=ld_tex('back.png',path,'');
+    for ix:=0 to 8 do back[ix]:=rotate_image_from_image(im,ix*16,0,16,16,0);
+   end;
+
+  player.loadSkin('char_ani.png', path);
+
+  if load_mob_tex then
+   begin
+    im:=ld_tex('zombie_ani.png',path,'mobs/');
+    zomb[0,0]:=rotate_image_from_image(im,0,0,20,22,0);
+    zomb[0,6]:=rotate_image_from_image(im,0,52,12,12,0);
+    zomb[0,7]:=rotate_image_from_image(im,13,52,12,12,0);
+    zomb[0,8]:=rotate_image_from_image(im,26,52,12,12,0);
+    zomb[0,9]:=rotate_image_from_image(im,13,52,12,12,0);
+
+    zomb[1,0]:=rotate_image_from_image(im,21,0,20,22,0);
+    zomb[1,6]:=rotate_image_from_image(im,39,52,12,12,0);
+    zomb[1,7]:=rotate_image_from_image(im,52,52,12,12,0);
+    zomb[1,8]:=rotate_image_from_image(im,65,52,12,12,0);
+    zomb[1,9]:=rotate_image_from_image(im,52,52,12,12,0);
+
+    im:=ld_tex('pig_anims.png',path,'mobs/');
+    pig[0,0]:=rotate_image_from_image(im,0,0,28,22,0);//1
+    pig[0,1]:=rotate_image_from_image(im,29,0,28,22,0);//2
+    pig[0,2]:=rotate_image_from_image(im,58,0,28,22,0);//3
+
+    pig[1,0]:=rotate_image_from_image(im,0,23,28,22,0);//1
+    pig[1,1]:=rotate_image_from_image(im,29,23,28,22,0);//2
+    pig[1,2]:=rotate_image_from_image(im,58,23,28,22,0);//3
+
+    im:=ld_tex('sheep_anims.png',path,'mobs/');
+    sheep[0,0]:=rotate_image_from_image(im,0,0,28,24,0);//1
+    sheep[0,1]:=rotate_image_from_image(im,29,0,28,24,0);//2
+    sheep[0,2]:=rotate_image_from_image(im,58,0,28,24,0);//3
+
+    sheep[1,0]:=rotate_image_from_image(im,0,25,28,24,0);//1
+    sheep[1,1]:=rotate_image_from_image(im,29,25,28,24,0);//2
+    sheep[1,2]:=rotate_image_from_image(im,58,25,28,24,0);//3
+
+    im:=ld_tex('sheep_fur.png',path,'mobs/');
+    sheep[0,3]:=rotate_image_from_image(im,0,0,18,9,0);
+    sheep[1,3]:=rotate_image_from_image(im,18,0,18,9,0);
+
+    im:=ld_tex('chicken_anims.png',path,'mobs/');
+    chicken[0,0]:=rotate_image_from_image(im,0,0,16,16,0);//1
+    chicken[0,1]:=rotate_image_from_image(im,16,0,16,16,0);//2
+    chicken[0,2]:=rotate_image_from_image(im,32,0,16,16,0);//3
+
+    chicken[1,0]:=rotate_image_from_image(im,0,16,16,16,0);//1
+    chicken[1,1]:=rotate_image_from_image(im,16,16,16,16,0);//2
+    chicken[1,2]:=rotate_image_from_image(im,32,16,16,16,0);//3
+
+    im:=ld_tex('creeper_anims.png',path,'mobs/');
+    creeper[0,0]:=rotate_image_from_image(im,0,0,16,26,0);//1
+    creeper[0,1]:=rotate_image_from_image(im,16,0,16,26,0);//2
+    creeper[0,2]:=rotate_image_from_image(im,32,0,16,26,0);//3
+
+    creeper[1,0]:=rotate_image_from_image(im,0,27,16,26,0);//1
+    creeper[1,1]:=rotate_image_from_image(im,16,27,16,26,0);//2
+    creeper[1,2]:=rotate_image_from_image(im,32,27,16,26,0);//3
+
+    im:=ld_tex('cow.png',path,'mobs/');
+    cow1[0,0]:=rotate_image_from_image(im,0,0,27,27,0);//1
+    cow1[0,1]:=rotate_image_from_image(im,28,0,27,27,0);//2
+    cow1[0,2]:=rotate_image_from_image(im,56,0,27,27,0);//3
+
+    cow1[1,0]:=rotate_image_from_image(im,0,28,27,27,0);//1
+    cow1[1,1]:=rotate_image_from_image(im,28,28,27,27,0);//2
+    cow1[1,2]:=rotate_image_from_image(im,56,28,27,27,0);//3
+
+    im:=ld_tex('cow2.png',path,'mobs/');
+    cow2[0,0]:=rotate_image_from_image(im,0,0,27,27,0);//1
+    cow2[0,1]:=rotate_image_from_image(im,28,0,27,27,0);//2
+    cow2[0,2]:=rotate_image_from_image(im,56,0,27,27,0);//3
+
+    cow2[1,0]:=rotate_image_from_image(im,0,28,27,27,0);//1
+    cow2[1,1]:=rotate_image_from_image(im,28,28,27,27,0);//2
+    cow2[1,2]:=rotate_image_from_image(im,56,28,27,27,0);//3
+
+
+    im:=ld_tex('spider_ani.png',path,'mobs/');
+    spider[0,0]:=rotate_image_from_image(im,0,0,32,16,0);//1
+    spider[0,1]:=rotate_image_from_image(im,32,0,32,16,0);//2
+    spider[0,2]:=rotate_image_from_image(im,64,0,32,16,0);//3
+
+    spider[1,0]:=rotate_image_from_image(im,0,16,32,16,0);//1
+    spider[1,1]:=rotate_image_from_image(im,32,16,32,16,0);//2
+    spider[1,2]:=rotate_image_from_image(im,64,16,32,16,0);//3
+
+    im:=ld_tex('pigman_ani.png',path,'mobs/');
+    pigman[0,0]:=rotate_image_from_image(im,0,0,20,22,0);
+    pigman[0,6]:=rotate_image_from_image(im,0,52,12,12,0);
+    pigman[0,7]:=rotate_image_from_image(im,13,52,12,12,0);
+    pigman[0,8]:=rotate_image_from_image(im,26,52,12,12,0);
+    pigman[0,9]:=rotate_image_from_image(im,13,52,12,12,0);
+
+    pigman[1,0]:=rotate_image_from_image(im,21,0,20,22,0);
+    pigman[1,6]:=rotate_image_from_image(im,39,52,12,12,0);
+    pigman[1,7]:=rotate_image_from_image(im,52,52,12,12,0);
+    pigman[1,8]:=rotate_image_from_image(im,65,52,12,12,0);
+    pigman[1,9]:=rotate_image_from_image(im,52,52,12,12,0);
+   end;
+
+  im:=ld_tex('gui.png',path,'gui/');
+  gui[0]:=rotate_image_from_image(im,0,0,16,16,0);
+  LoadCurImg(gui[0], CUR_SELECT1);
+  gui[1]:=rotate_image_from_image(im,0,16,168,21,0);
+  gui[3]:=rotate_image_from_image(im,16,0,16,16,0);
+  LoadCurImg(gui[3], CUR_SELECT2);
+  gui[6]:=rotate_image_from_image(im,0,56,120,12,0);
+  gui[7]:=rotate_image_from_image(im,0,68,120,12,0);
+  gui[8]:=rotate_image_from_image(im,0,80,120,12,0);
+  gui[13]:=rotate_image_from_image(im,1,93,9,9,0);//hp
+  gui[14]:=rotate_image_from_image(im,12,93,9,9,0);//hp
+  gui[15]:=rotate_image_from_image(im,23,93,9,9,0);//hp
+  gui[17]:=rotate_image_from_image(im,120,56,18,18,0);
+
+  gui[26]:=rotate_image_from_image(im,89,93,9,9,0);//hunger
+  gui[27]:=rotate_image_from_image(im,100,93,9,9,0);//hunger
+  gui[28]:=rotate_image_from_image(im,111,93,9,9,0);//hunger
+
+  gui[29]:=rotate_image_from_image(im,67,93,9,9,0);//air
+  gui[30]:=rotate_image_from_image(im,78,93,9,9,0);//air
+
+  gui[31]:=rotate_image_from_image(im,122,93,9,9,0);//hp hardcore
+  gui[32]:=rotate_image_from_image(im,133,93,9,9,0);//hp hardcore
+  gui[33]:=rotate_image_from_image(im,144,93,9,9,0);//hp hardcore
+
+  gui[20]:=rotate_image_from_image(im,121,75,9,13,0);
+  gui[21]:=rotate_image_from_image(im,130,75,9,13,0);
+  gui[22]:=rotate_image_from_image(im,0,103,120,12,0);
+
+  if load_minimap_tex then gui[16]:=ld_tex('mapbg.png',path,'gui/');
+
+  for ix:=0 to 9 do tue[ix]:=rotate_image_from_image(im,16*ix,40,16,16,0);
+
+  if load_weather_tex then
+   begin
+    im:=ld_tex('rain.png',path,'terrain/');
+    for ix:=0 to 7 do osad[0,ix]:=rotate_image_from_image(im,16*ix,0,16,16,0);
+    im:=ld_tex('snow.png',path,'terrain/');
+    for ix:=0 to 7 do osad[1,ix]:=rotate_image_from_image(im,16*ix,0,16,16,0);
+    //Снежинки-частицы 8x8 из кадров снега
+    for ix:=0 to 7 do snow8[ix]:=resize_image(osad[1,ix],8,8);
+   end;
+
+  if load_light_tex then
+   begin
+    im:=ld_tex('light.png',path,'terrain/');
+    for ix:=0 to 15 do light[ix]:=rotate_image_from_image(im,16*ix,0,16,16,0);
+   end;
+
+  if load_particles_tex then
+   begin
+    im:=ld_tex('particles.png',path,'terrain/');
+    for ix:=0 to 7 do
+     begin
+      pr_1[ix]:=rotate_image_from_image(im,8*ix,0,8,8,0);
+      pr_2[ix]:=rotate_image_from_image(im,8*ix,8,8,8,0);
+      pr_3[ix]:=rotate_image_from_image(im,8*ix,16,8,8,0);
+      pr_4[ix]:=rotate_image_from_image(im,8*ix,24,8,8,0);
+      pr_5[ix]:=rotate_image_from_image(im,8*ix,32,8,8,0);
+     end;
+    bubble:=rotate_image_from_image(im,0,40,8,8,0);
+    im:=ld_tex('explosion.png',path,'terrain/');
+    for ix:=0 to 15 do
+     pr_boom[ix]:=rotate_image_from_image(im,32*ix,0,32,32,0);
+   end;
+
+  im:=ld_tex('partition.png',path,'gui/');
+  gui[18]:=rotate_image_from_image(im,0,0,84,42,0);
+  gui[19]:=rotate_image_from_image(im,0,42,4,4,0);
+
+  if load_sky_siz<=0 then
+   sky:=ld_tex('sky.png',path,'terrain/');
+  else
+   sky:=resize_image(ld_tex('sky.png',path,'terrain/'),load_sky_siz,2);
+
+  if load_sm=1 then
+   begin
+    sun:=ld_tex('sun.png',path,'terrain/');
+    moon:=ld_tex('moon_phase_0.png',path,'terrain/moon_phases/');
+   end; else
+  if load_sm=2 then
+   begin
+    sun:=resize_image(ld_tex('sun.png',path,'terrain/'),(getWidth+getHeight)/5,(getWidth+getHeight)/5);
+    moon:=resize_image(ld_tex('moon_phase_0.png',path,'terrain/moon_phases/'),(getWidth+getHeight)/5,(getWidth+getHeight)/5);
+    end;
+
+  //load_virt_tex(ld_tex('touch.png',path,'gui/'));
+ end;
+
+procedure cleargame;
+ var
+  ix,iy:integer;
+ begin
+  jmp:=false;
+  fall:=false;
+  keymode:=0;
+  updx:=0;
+  updy:=0;
+  toolus:=0;
+  toolind:=0;
+  osadki_ani:=0;
+  osadki_scr:=0;
+  global_light:=15;
+  pl_world:=0;
+
+  camx:=0;
+  camy:=0;
+  curx:=0;
+  cury:=0;
+
+  player.setX(0);
+  player.setY(0);
+  last_sleep_x:=0;
+  last_sleep_y:=0;
+
+  fly:=false;
+  game_time:=0;
+  clock_stage:=0;
+  hp:=20;
+  hunger:=20;
+  air:=21;
+  moon_phase:=0;
+  posi:=0;
+  velx:=2;
+  vely:=0;
+  min_vely:=-32;
+  acc:=1;
+  invslot:=0;
+
+  osadki:=false;
+
+  anim_del2:=0;
+
+  inv.resetData;
+
+  chest.resetData;
+
+  //Печи не сохраняются в файл, сбрасываем их состояние
+  furnace.resetData;
+
+  drop.resetData;
+
+  for ix:=0 to 31 do
+   begin
+    mob[ix].m_type:=0;
+    mob[ix].m_x:=0;
+    mob[ix].m_y:=0;
+    mob[ix].m_posi:=0;
+    mob[ix].m_velx:=0;
+    mob[ix].m_vely:=0;
+    mob[ix].m_ani:=0;
+    mob[ix].m_min_vely:=0;
+    mob[ix].m_hp:=0;
+    mob[ix].m_del:=0;
+    mob[ix].m_fall:=false;
+    mob[ix].m_jmp:=false;
+    mob[ix].m_velani:=false;
+    mob[ix].m_int:=0;
+   end;
+
+  gb_up_pa:=0;
+  reset_particles(max_particles+1);
+
+  for ix:=0 to 255 do
+   begin
+    setBackMap(0, ix);
+    setBiomMap(0, ix);
+    for iy:=0 to 127 do
+     begin
+      setmap(0,ix,iy);
+      setmapinfo(0,ix,iy);
+      setmaplight(0,ix,iy);
+     end;
+   end;
+
+  for ix:=0 to 31 do
+   begin
+    b_sign[ix]:=false;
+    sign[ix]:='';
+   end;
+
+  for ix:=0 to CONST_MAX_LAYERS do
+   ClearLayer(ix);
+ end;
+
+procedure drw_load_line(s:string;percent:integer);
+ var
+  ix,iy:integer;
+ begin
+  for ix:=0 to getWidth/16 do
+  for iy:=0 to getHeight/16 do
+  drawimage(bg[0],ix*16,iy*16);
+  drawfonttext(s,(getWidth/2)-(length(s)*8/2),(getHeight/2)-8);
+  setcolor(128,128,128);
+  fillrect(getwidth/2-50,getheight/2+6,100,3);
+  setcolor(128,255,128);
+  fillrect(getwidth/2-50,getheight/2+6,percent,3);
+  drawfonttext(integertostring(percent)+'%',getwidth/2-(length(integertostring(percent)+'%')*8)/2,getheight/2+12);
+  drawVideo;
+ end;
+
+function getFlatMap(i:integer):integer;
+ var
+  ix, iy:integer;
+ begin
+  iy:=i div 256;
+  ix:=i-iy*256;
+  getFlatMap:=getmap(ix,iy);
+ end;
+
+procedure setFlatMap(n, i:integer);
+ var
+  ix, iy:integer;
+ begin
+  iy:=i div 256;
+  ix:=i-iy*256;
+  setmap(n,ix,iy);
+ end;
+
+function getFlatMapInfo(i:integer):integer;
+ var
+  ix, iy:integer;
+ begin
+  iy:=i div 256;
+  ix:=i-iy*256;
+  getFlatMapInfo:=getmapinfo(ix,iy);
+ end;
+
+procedure setFlatMapInfo(n, i:integer);
+ var
+  ix, iy:integer;
+ begin
+  iy:=i div 256;
+  ix:=i-iy*256;
+  setmapinfo(n,ix,iy);
+ end;
+
+procedure SaveMapRLE;
+ var
+  i:integer;
+  id, s:integer;
+ begin
+  repeat
+   id:=getFlatMap(i);
+   for s:=0 to 255 do
+    if (id<>getFlatMap(i+s)) or (i+s>32767) then
+     break;
+
+   write_byte(id);
+   write_byte(s-1);
+
+   i:=i+s;
+  until i>32767;
+ end;
+
+procedure SaveMapInfoRLE;
+ var
+  i:integer;
+  id, s:integer;
+ begin
+  repeat
+   id:=getFlatMapInfo(i);
+   for s:=0 to 255 do
+    if (id<>getFlatMapInfo(i+s)) or (i+s>32767) then
+     break;
+
+   write_byte(id);
+   write_byte(s-1);
+
+   i:=i+s;
+  until i>32767;
+ end;
+
+procedure LoadMapRLE;
+ var
+  i:integer;
+  id, s, j:integer;
+ begin
+  repeat
+    id:=read_byte;
+    s:=read_byte;
+    for j:=0 to s do
+     setFlatMap(id, i+j);
+
+    i:=i+s+1;
+  until i>32767;
+ end;
+
+procedure LoadMapInfoRLE;
+ var
+  i:integer;
+  id, s, j:integer;
+ begin
+  repeat
+    id:=read_byte;
+    s:=read_byte;
+    for j:=0 to s do
+     setFlatMapInfo(id, i+j);
+
+    i:=i+s+1;
+  until i>32767;
+ end;
+
+procedure saveworld(path:string);
+ var
+  ix,iy:integer;
+  world_name:string;
+ begin
+   if pl_world=0 then world_name:='world.sav';
+    else
+   if pl_world=1 then world_name:='nether.sav';
+   if file_exists(path)<>1 then if create_folder(path)=1 then debug('Folder created!');
+   if file_exists(path+world_name)>0 then delete_file(path+world_name);
+   if file_exists(path+world_name)<>1 then file_create(path+world_name);
+   if open_file(path+world_name)=1 then
+    begin
+     writeint(player.getX);
+     writeint(player.getY);
+     //Matrix
+     //Matrix
+     SaveMapRLE;
+     SaveMapInfoRLE;
+     drw_load_line('Background',50);
+     //Background and biomes
+     for ix:=0 to 255 do
+      begin
+       write_byte(getBackMap(ix));
+       write_byte(getBiomMap(ix));
+      end;
+     drw_load_line('Chests',55);
+     //Chests
+     chest.saveData;
+     drw_load_line('Furnaces',60);
+     //Furnaces
+    /* for ix:=0 to 15 do
+      begin
+       writebool(b_furnace[ix]);
+       writeint(furnace_gg[ix].f_gor);
+       writeint(furnace_gg[ix].f_got);
+        for iy:=0 to 4 do
+         begin
+          write_byte(furnace[ix,iy].item_i);
+          writeint(furnace[ix,iy].sum_i);
+         end;
+       end;*/
+     drw_load_line('Mobs',70);
+     //Mobs
+     for ix:=0 to 31 do
+      begin
+       write_byte(mob[ix].m_type);
+       writeint(mob[ix].m_x);
+       writeint(mob[ix].m_y);
+       write_byte(mob[ix].m_posi);
+       write_byte(mob[ix].m_velx);
+       write_byte(mob[ix].m_vely);
+       write_byte(mob[ix].m_ani);
+       write_byte(mob[ix].m_min_vely);
+       writeint(mob[ix].m_hp);
+       write_byte(mob[ix].m_del);
+       writebool(mob[ix].m_fall);
+       writebool(mob[ix].m_jmp);
+       writebool(mob[ix].m_velani);
+      end;
+     drw_load_line('Drop',80);
+     //Drop
+     drop.saveData;
+      drw_load_line('Particles',85);
+     //Particles
+     writeint(max_particles);
+     write_byte(gb_up_pa);
+     for ix:=0 to max_particles do
+      begin
+       write_byte(get_particle_type(ix));
+       write_byte(get_particle_ani(ix));
+       writeint(get_particle_x(ix));
+       writeint(get_particle_y(ix));
+      end;
+     drw_load_line('Other',90);
+     //Other
+     write_byte(updx);
+     write_byte(updy);
+     writebool(osadki);
+     write_byte(osadki_ani);
+     write_byte(global_light);
+     writebool(fly);
+     writeint(game_time);
+     write_byte(clock_stage);
+     for ix:=0 to 31 do
+      begin
+       writebool(b_sign[ix]);
+       writestr(sign[ix]);
+      end;
+     flush;
+     drw_load_line('Ready',100);
+     if close_file(path+world_name)=1 then debug('World Saved!');
+    end;
+ end;
+
+procedure savegame(path:string);
+ var
+  ix,iy:integer;
+ begin
+   drw_load_line('Basic',0);
+   if file_exists(path+'player.dat')=1 then delete_file(path+'player.dat');
+   if file_exists(path)<>1 then if create_folder(path)=1 then debug('Folder created!');
+   if file_exists(path+'player.dat')<>1 then file_create(path+'player.dat');
+   if open_file(path+'player.dat')=1 then
+    begin
+     //Head
+     write_byte(version_map);
+     write_byte(gamemode);
+     writebool(cheats);
+     writeint(seed);
+     write_byte(pl_world);
+     //Player
+      writeint(last_sleep_x);
+      writeint(last_sleep_y);
+      write_byte(velx);
+      write_byte(vely);
+      write_byte(min_vely);
+      write_byte(invslot);
+      write_byte(posi);
+      write_byte(hp);
+      write_byte(hunger);
+      write_byte(moon_phase);
+      write_byte(acc);
+      writebool(jmp);
+      writebool(fall);
+      inv.saveData;
+       if close_file(path+'player.dat')=1 then debug('Saved!');
+       drw_load_line('Matrix',10);
+       saveworld(path);
+    end;
+end;
+
+
+function version_err(ver:integer):boolean;
+ var
+  ix,iy:integer;
+ begin
+  for ix:=0 to getWidth/16 do
+  for iy:=0 to getHeight/16 do
+   begin
+    drawimage(bg[0],ix*16,iy*16);
+   end;
+  if version_map=ver then version_err:=true; else
+  if version_map>ver then
+   begin
+    drawfonttext('Old save format!',(getWidth/2)-60,(getHeight/2)-4);
+    drawVideo;
+    delay(3000);
+    version_err:=false;
+   end; else
+  if version_map<ver then
+   begin
+    drawfonttext('New save format!',(getWidth/2)-60,(getHeight/2)-4);
+    drawVideo;
+    delay(3000);
+    version_err:=false;
+   end;
+ end;
+
+
+function loadworld(path:string):boolean;
+ var
+  ix,iy,ver:integer;
+  world_name:string;
+ begin
+   if pl_world=0 then world_name:='world.sav';
+    else
+   if pl_world=1 then world_name:='nether.sav';
+   if file_exists(path)=1 then
+    begin
+     if file_exists(path+world_name)=1 then
+      begin
+       if open_file(path+world_name)=1 then
+    begin
+    player.setX(readint);
+    player.setY(readint);
+     //Matrix
+     LoadMapRLE;
+     LoadMapInfoRLE;
+     drw_load_line('Background',50);
+     //Background and biomes
+     for ix:=0 to 255 do
+      begin
+       setBackMap(read_byte, ix);
+       setBiomMap(read_byte, ix);
+      end;
+     drw_load_line('Chests',55);
+     //Chests
+     chest.loadData;
+     drw_load_line('Furnaces',60);
+     //Furnaces (не сохраняются, сбрасываем состояние)
+     furnace.resetData;
+       drw_load_line('Mobs',70);
+     //Mobs
+     for ix:=0 to 31 do
+      begin
+       mob[ix].m_type:=read_byte;
+       mob[ix].m_x:=readint;
+       mob[ix].m_y:=readint;
+       mob[ix].m_posi:=read_byte;
+       mob[ix].m_velx:=read_byte;
+       mob[ix].m_vely:=read_byte;
+       mob[ix].m_ani:=read_byte;
+       mob[ix].m_min_vely:=read_byte;
+       mob[ix].m_hp:=readint;
+       mob[ix].m_del:=read_byte;
+       mob[ix].m_fall:=readbool;
+       mob[ix].m_jmp:=readbool;
+       mob[ix].m_velani:=readbool;
+      end;
+      drw_load_line('Drop',80);
+     //Drop
+     drop.loadData;
+      drw_load_line('Particles',85);
+     //Particles
+     max_particles:=readint;
+     reset_particles(max_particles+1);
+     gb_up_pa:=read_byte;
+     for ix:=0 to max_particles do
+      begin
+       set_particle_type(ix,read_byte);
+       set_particle_ani(ix,read_byte);
+       set_particle_x(ix,readint);
+       set_particle_y(ix,readint);
+      end;
+      drw_load_line('Other',90);
+     //Other
+     updx:=read_byte;
+     updy:=read_byte;
+     osadki:=readbool;
+     osadki_ani:=read_byte;
+     global_light:=read_byte;
+     fly:=readbool;
+     game_time:=readint;
+     clock_stage:=read_byte;
+     for ix:=0 to 31 do
+      begin
+       b_sign[ix]:=readbool;
+       sign[ix]:=readstr;
+      end;
+     drw_load_line('Ready',100);
+     ///////////////////////
+     if close_file(path+world_name)=1 then begin loadworld:=true; debug('World loaded!'); end;
+       end; else begin loadworld:=false; debug('File not opened!'); end;
+      end; else begin loadworld:=false; debug('File not exists!'); end;
+    end; else begin loadworld:=false; debug('Folder not exists!'); end;
+ end;
+
+function loadgame(path:string):boolean;
+var
+  ix,iy,ver:integer;
+ begin
+   drw_load_line('Basic',0);
+   if file_exists(path)=1 then
+    begin
+     if file_exists(path+'player.dat')=1 then
+      begin
+       if open_file(path+'player.dat')=1 then
+    begin
+     //Head
+     ver:=read_byte;
+     if version_err(ver)=false then
+      begin
+       if close_file(path+'player.dat')=1 then loadgame:=false;
+       exit;
+      end;
+     gamemode:=read_byte;
+     cheats:=readbool;
+     seed:=readint;
+     pl_world:=read_byte;
+     //Player;
+      last_sleep_x:=readint;
+      last_sleep_y:=readint;
+      velx:=read_byte;
+      vely:=read_byte;
+      min_vely:=read_byte;
+      invslot:=read_byte;
+      posi:=read_byte;
+      hp:=read_byte;
+      hunger:=read_byte;
+      moon_phase:=read_byte;
+      acc:=read_byte;
+      jmp:=readbool;
+      fall:=readbool;
+      inv.loadData;
+       drw_load_line('Matrix',10);
+       if  close_file(path+'player.dat')=1 then loadgame:=loadworld(path);
+       end; else loadgame:=false;
+      end; else loadgame:=false;
+    end; else loadgame:=false;
+end;
+
+procedure drawdeadlogo;
+ var
+  dead:image;
+ begin
+  setcolor(0,0,0);
+  fillrect(0,0,getWidth,getHeight);
+  dead:=loadimage('/dl');
+  drawimage(dead,(getWidth/2)-(getimagewidth(dead)/2),(getHeight/2)-(getimageheight(dead)/2));
+  drawfonttext(#119+#119+#119+#46+#100+#101+#97+#100+#115+#111+#102+#116+#119+#97+#114+#101+#46+#114+#117,getWidth/2-80,(getHeight/2)+(getimageheight(dead)/2));
+  drawfonttext('Loading...',(getWidth/2)-(40),getHeight-8);
+  drawVideo;
+  delay(500);
+ end;
+
+procedure newgame;
+ var
+  ix,iy:integer;
+ begin
+  for ix:=0 to getWidth/16 do
+   for iy:=0 to getHeight/16 do
+    begin
+     drawimage(bg[0],ix*16,iy*16);
+    end;
+  drawfonttext('Generation World...',(getWidth/2)-(76),(getHeight/2)-4);
+  drawVideo;
+  delay(1);
+  cleargame;
+  game_time:=45000;
+  newworld;
+  if s_spawn_mob then begin if pl_world=0 then begin megaspawn; end; else begin netherspawn; end; end;
+  if gamemode=1 then fly:=true else fly:=false;
+  debug('New game!');
+ end;
+
+function gettext(text,text_f:string; max,typ:integer;):string;
+ var
+  textField_id:integer;
+  exitCmd,cli:command;
+ begin
+  clearForm;
+  exitCmd:=createCommand('Ok',CM_OK,1);
+  //Команду добавляем ДО showForm и после зовём repaint,
+  //иначе на ряде устройств/эмуляторов кнопка не цепляется к форме
+  addCommand(exitCmd);
+  textField_id:=formAddTextField(text,text_f,max,typ);
+  showForm;
+  repaint;
+  delay(100);
+  repeat
+   cli:=getClickedCommand;
+   delay(1);
+  until cli=exitCmd;
+  gettext:=formGetText(textField_id);
+  showCanvas;
+ end;
+
+procedure drw_btn(text:string; cur,ccur,h,ty:integer);
+ var
+  m_x,m_y,i:integer;
+ begin
+  m_x:=(getWidth/2)-(120/2);
+  m_y:=h+((getHeight/2))-((getimageheight(gui[7])-2*cur)/2)+((getimageheight(gui[7])+2)*cur);
+  if ty=0 then
+   begin
+    if ccur=cur then drawimage(gui[22],m_x+i*4,m_y); else drawimage(gui[6],m_x+i*8,m_y);
+   end; else
+  if ty=1 then
+   begin
+    if ccur=cur then drawimage(gui[8],m_x+i*8,m_y); else drawimage(gui[7],m_x+i*8,m_y);
+   end;
+  setclip(0,0,getwidth,getheight);
+  m_x:=(getWidth/2)-(length(text)*8/2);
+  m_y:=h+((getHeight/2))-((getimageheight(gui[7])-2*cur)/2)+((getimageheight(gui[7])+2)*cur)+((getimageheight(gui[7])-8)/2);
+  drawfonttext(text,m_x,m_y);
+ end;
+
+procedure drw_txt(str:string; xx,n,t:integer);
+ var
+  m_x,m_y:integer;
+ begin
+  m_x:=(getWidth/2)-(length(str)*8/2);
+  m_y:=xx+32+(8*n);
+  if t=0 then drawfonttext(str,0,m_y); else
+  if t=1 then drawfonttext(str,m_x,m_y);
+ end;
+
+function pos_end(s:string; c:char):integer;
+ var
+  i:integer;
+ begin
+  for i:=length(s)-1 downto 0 do
+   begin
+    if getchar(s,i)=c then
+     begin
+      pos_end:=i;
+      exit;
+     end;
+   end;
+  pos_end:=-1;
+ end;
+
+function getroot(cancel_b:boolean):string;
+ var
+  m_cur,max_r,pars,ix,iy:integer;
+  rr:string;
+  im:image;
+  roots:array [0..15] of string;
+ begin
+  im:=rotate_image_from_image(ld_tex('background.png','/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/','title/'),16,0,16,16,0);
+  rr:=get_roots;
+  if cancel_b then roots[0]:='<CANCEL>';
+  if cancel_b then max_r:=1; else max_r:=0;
+  while pos(rr,'|')<>-1 do
+   begin
+    pars:=pos(rr,'|');
+    if max_r>15 then break;
+    roots[max_r]:=copy(rr,0,pars-1);
+    rr:=copy(rr,pars+1,length(rr));
+    max_r:=max_r+1;
+   end;
+   max_r:=max_r-1;
+  repeat
+   updateKeys;
+   if clickedKey(KEY_FM_UP) then begin m_cur:=m_cur-1; if m_cur<0 then m_cur:=max_r; end;
+   if clickedKey(KEY_FM_DOWN) then begin m_cur:=m_cur+1; if m_cur>max_r then m_cur:=0; end;
+   if clickedKey(KEY_FM_SELECT) then
+    begin
+     if (m_cur=0) and (cancel_b) then
+      begin
+       getroot:='';
+       exit;
+      end;
+     else
+      begin
+       getroot:=roots[m_cur];
+       exit;
+      end;
+    end;
+
+   for ix:=0 to getWidth/16 do
+   for iy:=0 to getHeight/16 do
+    drawimage(im,ix*16,iy*16);
+
+   setcolor(0,0,0);
+   fillrect(0,m_cur*8,getWidth-1,8);
+   for ix:=0 to max_r do
+    begin
+     drawfonttext(roots[ix],0,ix*8);
+    end;
+   setcolor(255,255,255);
+   drawrect(0,m_cur*8,getWidth-1,8);
+
+   drawVideo;
+   delay(1);
+  until false;
+ end;
+
+function filemanager(cancel_b:boolean):string;
+ var
+  m_cur,ix,iy,max_r,pars:integer;
+  im:image;
+  last,rr,root,path:string;
+  names:array [0..255] of string;
+ begin
+  im:=rotate_image_from_image(ld_tex('background.png','/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/','title/'),16,0,16,16,0);
+  names[0]:='<..>';
+  names[1]:='<OK>';
+  root:=getroot(cancel_b);
+  if root='' then
+   begin
+    filemanager:='';
+    exit;
+   end;
+  path:=root;
+  if cancel_b then names[2]:='<CANCEL>';
+  rr:=get_dirs(path);
+  if cancel_b then max_r:=3; else max_r:=2;
+  while pos(rr,'|')<>-1 do
+   begin
+    pars:=pos(rr,'|');
+    names[max_r]:=copy(rr,0,pars-1);
+    rr:=copy(rr,pars+1,length(rr));
+    max_r:=max_r+1;
+   end;
+   max_r:=max_r-1;
+
+  repeat
+   updateKeys;
+   if clickedKey(KEY_FM_UP) then begin m_cur:=m_cur-1; if m_cur<0 then m_cur:=max_r; end;
+   if clickedKey(KEY_FM_DOWN) then begin m_cur:=m_cur+1; if m_cur>max_r then m_cur:=0; end;
+   if clickedKey(KEY_FM_SELECT) then
+    begin
+     if m_cur=0 then
+      begin
+       debug('path:'+path);
+       debug('lol:'+pos_end(path,'/'));
+       if (path=root) or (path=root+'/') then
+        begin
+         root:=getroot(cancel_b);
+         if root='' then
+          begin
+           filemanager:='';
+           exit;
+          end;
+         path:=root;
+        end;
+       else
+        begin
+         path:=copy(path,0,pos_end(path,'/'));
+         if cancel_b then names[2]:='<CANCEL>';
+         rr:=get_dirs(path);
+         if cancel_b then max_r:=3; else max_r:=2;
+          while pos(rr,'|')<>-1 do
+           begin
+            pars:=pos(rr,'|');
+            names[max_r]:=copy(rr,0,pars-1);
+            rr:=copy(rr,pars+1,length(rr));
+            max_r:=max_r+1;
+           end;
+          max_r:=max_r-1;
+        end;
+      end; else
+     if m_cur=1 then
+      begin
+       debug('<OK>');
+       filemanager:=path;
+       exit;
+      end; else
+     if (m_cur=2) and (cancel_b) then
+      begin
+       debug('<CANCEL>');
+       filemanager:='';
+       exit;
+      end; else
+     begin
+      path:=path+'/'+names[m_cur];
+
+      if cancel_b then names[2]:='<CANCEL>';
+      rr:=get_dirs(path);
+      if cancel_b then max_r:=3; else max_r:=2;
+      while pos(rr,'|')<>-1 do
+       begin
+        pars:=pos(rr,'|');
+        names[max_r]:=copy(rr,0,pars-1);
+        rr:=copy(rr,pars+1,length(rr));
+        max_r:=max_r+1;
+       end;
+      max_r:=max_r-1;
+      m_cur:=0;
+      debug('path:'+path);
+     end;
+    end;
+
+   for ix:=0 to getWidth/16 do
+   for iy:=0 to getHeight/16 do
+    drawimage(im,ix*16,iy*16);
+
+   setcolor(0,0,0);
+   fillrect(0,m_cur*8,getWidth-1,8);
+   for ix:=0 to max_r do
+    begin
+     drawfonttext(names[ix],0,ix*8);
+    end;
+   setcolor(255,255,255);
+   drawrect(0,m_cur*8,getWidth-1,8);
+
+  drawVideo;
+  delay(1);
+
+  until false;
+ end;
+
+procedure setsd(cancel_b:boolean);
+ var
+  t:integer;
+  rs:recordstore;
+ begin
+  sd:=filemanager(cancel_b);
+
+  if file_exists('/'+sd+'/cavecraft')<>1 then
+   if create_folder('/'+sd+'/cavecraft')=1 then debug('/cavecraft created!');
+
+  if file_exists('/'+sd+'/cavecraft/saves')<>1 then
+   if create_folder('/'+sd+'/cavecraft/saves')=1 then debug('/saves created!');
+
+  if file_exists('/'+sd+'/cavecraft/screenshots')<>1 then
+   if create_folder('/'+sd+'/cavecraft/screenshots')=1 then debug('/screenshots created!');
+
+  if file_exists('/'+sd+'/cavecraft/texturepacks')<>1 then
+   if create_folder('/'+sd+'/cavecraft/texturepacks')=1 then debug('/texturepacks created!');
+
+  deleteRecordStore('SD');
+  rs:=openRecordStore('SD');
+  t:=addRecordStoreEntry(rs,sd);
+  closeRecordStore(rs);
+ end;
+
+procedure start_uu;
+ var
+  rs:recordstore;
+  ss:string;
+ begin
+  drawdeadlogo;
+  //Load SD
+  rs:=openRecordStore('SD');
+  sd:=readRecordStoreEntry(rs,1);
+  closeRecordStore(rs);
+  console.exec('autoexec.cfg', 'AUTO', true);
+  if sd='' then
+   begin
+    init_touch;
+    if touchscreen then
+     load_key_tex:=1;
+    else
+     load_key_tex:=0;
+    //load_virt_tex(loadimage('/gui/touch.png'));
+    setsd(false);
+   end;
+
+  if file_exists('/'+sd+'/cavecraft')<>1 then
+   if create_folder('/'+sd+'/cavecraft')=1 then debug('/cavecraft created!');
+
+  if file_exists('/'+sd+'/cavecraft/saves')<>1 then
+   if create_folder('/'+sd+'/cavecraft/saves')=1 then debug('/saves created!');
+
+  if file_exists('/'+sd+'/cavecraft/screenshots')<>1 then
+   if create_folder('/'+sd+'/cavecraft/screenshots')=1 then debug('/screenshots created!');
+
+  if file_exists('/'+sd+'/cavecraft/texturepacks')<>1 then
+   if create_folder('/'+sd+'/cavecraft/texturepacks')=1 then debug('/texturepacks created!');
+
+  rs:=openRecordStore('TX');
+  ss:=readRecordStoreEntry(rs,1);
+  closeRecordStore(rs);
+
+  if ss<>'' then
+   begin
+    tex_pack:=ss;
+    LoadDrawFont('/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/');
+    loadtexture('/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/');
+   end;
+  else
+   begin
+    LoadDrawFont('/');
+    loadtexture('/');
+   end;
+ end;
+
+function question(text:string):boolean;
+ var
+  ix,iy,m_cur:integer;
+ begin
+  repeat
+   updateKeys;
+   if clickedKey(KEY_MENU_UP) then begin m_cur:=m_cur-1; if m_cur<0 then m_cur:=1; end;
+   if clickedKey(KEY_MENU_DOWN) then begin m_cur:=m_cur+1; if m_cur>1 then m_cur:=0; end;
+   if clickedKey(KEY_MENU_SELECT) then begin if m_cur=0 then question:=true; else question:=false; exit; end;
+   for ix:=0 to getwidth/16 do for iy:=0 to getheight/16 do drawimage(bg[0],ix*16,iy*16);
+   drawfonttext(text,getwidth/2-(length(text)*8)/2,getheight/2-16);
+   drw_btn('Yes',0,m_cur,0,1);
+   drw_btn('No',1,m_cur,0,1);
+   drawVideo;
+   delay(1);
+  until false;
+ end;
+
+function menu_game_new:boolean;
+ var
+  m_cur,tmp_gm,ix,iy,lol:integer;
+  tmp_cheats,tmp_bon_chest:boolean;
+  newgametxt:array[0..4] of string;
+  name,tmp:string;
+ begin
+  m_cur:=-2;
+  newgametxt[0]:='Survival';
+  newgametxt[1]:='Creative';
+  newgametxt[2]:='Hardcore';
+  newgametxt[3]:='Normal';
+  newgametxt[4]:='Flat';
+  name:='New World';
+  //Сид по умолчанию уже сгенерирован, чтобы не вводить вручную
+  if nextseed=0 then nextseed:=getrelativetimems;
+ repeat
+   updateKeys;
+   if clickedKey(KEY_MENU_UP) then begin m_cur:=m_cur-1; if m_cur<-2 then m_cur:=5; end;
+   if clickedKey(KEY_MENU_DOWN) then begin m_cur:=m_cur+1; if m_cur>5 then m_cur:=-2; end;
+   if clickedKey(KEY_MENU_SELECT) then
+    begin
+     if m_cur=-2 then
+      begin
+       name:=gettext('Name:',name,10,TF_ANY);
+      end; else
+     if m_cur=-1 then
+      begin
+       tmp_gm:=tmp_gm+1; if tmp_gm>2 then tmp_gm:=0;
+       if tmp_gm=0 then tmp_cheats:=false;
+       if tmp_gm=1 then tmp_cheats:=true;
+       if tmp_gm=2 then begin tmp_cheats:=false; tmp_bon_chest:=false; end;
+      end; else
+     if m_cur=0 then
+      begin
+       nextseed:=stringtointeger(gettext('Seed:',''+nextseed,10,TF_NUMERIC));
+      end; else
+     if m_cur=1 then
+      begin
+       world_typ:=world_typ+1;
+       if world_typ>1 then world_typ:=0;
+      end; else
+     if m_cur=2 then
+      begin
+       if tmp_gm<2 then tmp_cheats:= not tmp_cheats;
+      end; else
+     if m_cur=3 then
+      begin
+       if tmp_gm<2 then tmp_bon_chest:= not tmp_bon_chest;
+      end; else
+     if m_cur=4 then
+      begin
+       gamemode:=tmp_gm;
+       cheats:=tmp_cheats;
+       bon_chest:=tmp_bon_chest;
+       tmp:=name;
+       while file_exists('/'+sd+'/cavecraft/saves/'+name)=1 do
+        begin
+         lol:=lol+1;
+         name:=tmp+' '+lol;
+        end;
+       sav_fl:=name;
+       newgame;
+       menu_game_new:=true;
+       break;
+      end; else
+     if m_cur=5 then
+      begin
+       break;
+      end; else
+    end;
+   for ix:=0 to getWidth/16 do
+   for iy:=0 to getHeight/16 do
+    drawimage(bg[0],ix*16,iy*16);
+
+   drw_btn('Name:'+name,-2,m_cur,0,1);
+   drw_btn('Mode:'+newgametxt[tmp_gm],-1,m_cur,0,1);
+   drw_btn('Seed:'+nextseed,0,m_cur,0,1);
+   drw_btn('Type:'+newgametxt[world_typ+3],1,m_cur,0,1);
+   if tmp_gm<2 then
+    drw_btn('Cheats:'+tmp_cheats,2,m_cur,0,1);
+   else
+    drw_btn('Cheats:'+tmp_cheats,2,m_cur,0,0);
+   if tmp_gm<2 then
+    drw_btn('Chest:'+tmp_bon_chest,3,m_cur,0,1);
+   else
+    drw_btn('Chest:'+tmp_bon_chest,3,m_cur,0,0);
+   drw_btn('Create',4,m_cur,0,1);
+   drw_btn('Cancel',5,m_cur,0,1);
+
+   drawVideo;
+   delay(1);
+  until false;
+ end;
+
+procedure deleteworld(path:string);
+ begin
+    if file_exists(path+'player.dat')=1 then delete_file(path+'player.dat');
+    if file_exists(path+'world.sav')=1 then delete_file(path+'world.sav');
+    if file_exists(path+'nether.sav')=1 then delete_file(path+'nether.sav');
+    if file_exists(path+'pic.png')=1 then delete_file(path+'pic.png');
+    if file_exists(path)=1 then delete_file(path);
+    if file_exists(path)=0 then debug('World deleted!');
+ end;
+
+function menu_game:boolean;
+ var
+  ix,iy,pars,max_r,cur_name,m_cur:integer;
+  mm_t_b:boolean;
+  im_game:image;
+  rr:string;
+  names:array[0..255] of string;
+ begin
+  rr:=get_dirs('/'+sd+'/cavecraft/saves/');
+  while pos(rr,'|')<>-1 do
+   begin
+    pars:=pos(rr,'|');
+    names[max_r]:=copy(rr,0,pars-1);
+    rr:=copy(rr,pars+1,length(rr));
+    if file_exists('/'+sd+'/cavecraft/saves/'+names[max_r]+'/player.dat')=1 then max_r:=max_r+1;
+   end;
+   max_r:=max_r-1;
+   if file_exists('/'+sd+'/cavecraft/saves/'+names[cur_name]+'/pic.png')=1 then
+      im_game:=safely_load_image_fs('/'+sd+'/cavecraft/saves/'+names[cur_name]+'/pic.png');
+      else im_game:=ld_tex('maps.png','/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/','');
+
+   if file_exists('/'+sd+'/cavecraft/saves/'+names[cur_name]+'/player.dat')=1 then
+      mm_t_b:=true; else mm_t_b:=false;
+
+  repeat
+   updateKeys;
+   if clickedKey(KEY_MENU_UP) then
+    begin
+     m_cur:=m_cur-1;
+     if m_cur<0 then m_cur:=3;
+    end;
+   if clickedKey(KEY_MENU_DOWN) then
+    begin
+     m_cur:=m_cur+1;
+     if m_cur>3 then m_cur:=0;
+    end;
+
+   if clickedKey(KEY_MENU_LEFT) then
+    begin
+     cur_name:=cur_name-1;
+     if cur_name<0 then cur_name:=0;
+     if file_exists('/'+sd+'/cavecraft/saves/'+names[cur_name]+'/pic.png')=1 then
+      im_game:=safely_load_image_fs('/'+sd+'/cavecraft/saves/'+names[cur_name]+'/pic.png');
+     else im_game:=ld_tex('maps.png','/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/','');
+
+     if file_exists('/'+sd+'/cavecraft/saves/'+names[cur_name]+'/player.dat')=1 then
+    end;
+   if clickedKey(KEY_MENU_RIGHT) then
+    begin
+     cur_name:=cur_name+1;
+     if cur_name>max_r then cur_name:=max_r;
+     if file_exists('/'+sd+'/cavecraft/saves/'+names[cur_name]+'/pic.png')=1 then
+      im_game:=safely_load_image_fs('/'+sd+'/cavecraft/saves/'+names[cur_name]+'/pic.png');
+      else im_game:=ld_tex('maps.png','/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/','');
+
+     if file_exists('/'+sd+'/cavecraft/saves/'+names[cur_name]+'/player.dat')=1 then
+    end;
+   if clickedKey(KEY_MENU_SELECT) then
+    begin
+     if m_cur=0 then
+      begin
+       if max_r>-1 then
+       if loadgame('/'+sd+'/cavecraft/saves/'+names[cur_name]+'/') then
+        begin
+         sav_fl:=names[cur_name];
+         menu_game:=true;
+         break;
+        end;
+      end; else
+     if m_cur=1 then
+      begin
+       if menu_game_new then begin menu_game:=true; break; end;
+      end; else
+     if m_cur=2 then
+      begin
+       debug('/'+sd+'/cavecraft/saves/'+names[cur_name]+'/');
+       if max_r>-1 then
+       if question('Are you sure?')=true then deleteworld('/'+sd+'/cavecraft/saves/'+names[cur_name]+'/');
+       cur_name:=0;
+       max_r:=0;
+       rr:=get_dirs('/'+sd+'/cavecraft/saves/');
+       while pos(rr,'|')<>-1 do
+        begin
+         pars:=pos(rr,'|');
+         names[max_r]:=copy(rr,0,pars-1);
+         rr:=copy(rr,pars+1,length(rr));
+         max_r:=max_r+1;
+        end;
+       max_r:=max_r-1;
+       if file_exists('/'+sd+'/cavecraft/saves/'+names[cur_name]+'/pic.png')=1 then
+      im_game:=safely_load_image_fs('/'+sd+'/cavecraft/saves/'+names[cur_name]+'/pic.png');
+      else im_game:=ld_tex('maps.png','/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/','');
+      end; else
+     if m_cur=3 then
+      begin
+       break;
+      end;
+    end;
+
+   for ix:=0 to getWidth/16 do
+   for iy:=1 to 7 do
+    drawimage(bg[1],ix*16,iy*16);
+   for ix:=0 to getWidth/16 do
+    drawimage(bg[0],ix*16,0);
+   for ix:=0 to getWidth/16 do
+   for iy:=8 to getHeight/16 do
+    drawimage(bg[0],ix*16,iy*16);
+
+   if max_r>-1 then
+    begin
+     setcolor(0,0,0);
+     fillrect(32,24,getWidth-64,96);
+     setclip(32,24,getWidth-64,96);
+     drawimage(im_game,(getWidth/2)-(32),32);
+     drawfonttext(names[cur_name],(getWidth/2)-(length(names[cur_name])*8/2),104);
+     setclip(0,0,getWidth,getHeight);
+     setcolor(128,128,128);
+     drawrect(32,24,getWidth-64,96);
+     if cur_name>0 then drawimage(gui[20],0,58);
+     if cur_name<max_r then drawimage(gui[21],getWidth-9,58);
+    end;
+   else
+    begin
+     setcolor(0,0,0);
+     fillrect(32,24,getWidth-64,96);
+     setclip(32,24,getWidth-64,96);
+     drawfonttext('No saves!',(getWidth/2)-(length('No saves!')*8/2),104);
+     setclip(0,0,getWidth,getHeight);
+     setcolor(128,128,128);
+     drawrect(32,24,getWidth-64,96);
+    end;
+
+   if mm_t_b then drw_btn('Play',0,m_cur,32,1); else drw_btn('Play',0,m_cur,32,0);
+   drw_btn('Create new',1,m_cur,32,1);
+   if mm_t_b then drw_btn('Delete',2,m_cur,32,1); else drw_btn('Delete',2,m_cur,32,0);
+   drw_btn('Back',3,m_cur,32,1);
+
+   drawVideo;
+   delay(1);
+  until false;
+ end;
+
+procedure menu_tex;
+ var
+  ix,iy,pars,max_r,cur_name,m_cur,t:integer;
+  im_game:image;
+  rr:string;
+  names:array[0..255] of string;
+  rs:recordstore;
+ begin
+  rr:=get_dirs('/'+sd+'/cavecraft/texturepacks/');
+  names[0]:='Default';
+  max_r:=1;
+  while pos(rr,'|')<>-1 do
+   begin
+    pars:=pos(rr,'|');
+    names[max_r]:=copy(rr,0,pars-1);
+    rr:=copy(rr,pars+1,length(rr));
+    max_r:=max_r+1;
+   end;
+   max_r:=max_r-1;
+   im_game:=loadimage('/pack.png');
+
+  repeat
+   updateKeys;
+   if clickedKey(KEY_MENU_UP) then
+    begin
+     m_cur:=m_cur-1;
+     if m_cur<0 then m_cur:=1;
+    end;
+   if clickedKey(KEY_MENU_DOWN) then
+    begin
+     m_cur:=m_cur+1;
+     if m_cur>1 then m_cur:=0;
+    end;
+
+   if clickedKey(KEY_MENU_LEFT) then
+    begin
+     cur_name:=cur_name-1;
+     if cur_name<0 then cur_name:=0;
+     im_game:=ld_tex('pack.png','/'+sd+'/cavecraft/texturepacks/'+names[cur_name]+'/','');
+    end;
+   if clickedKey(KEY_MENU_RIGHT) then
+    begin
+     cur_name:=cur_name+1;
+     if cur_name>max_r then cur_name:=max_r;
+     im_game:=ld_tex('pack.png','/'+sd+'/cavecraft/texturepacks/'+names[cur_name]+'/','');
+    end;
+   if clickedKey(KEY_MENU_SELECT) then
+    begin
+    if m_cur=0 then begin
+     if cur_name>0 then
+      begin
+       tex_pack:=names[cur_name];
+       LoadDrawFont('/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/');
+       loadtexture('/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/');
+       deleteRecordStore('TX');
+       rs:=openRecordStore('TX');
+       t:=addRecordStoreEntry(rs,tex_pack);
+       closeRecordStore(rs);
+      end;
+     else
+      begin
+       tex_pack:='';
+       loadtexture('/');
+       deleteRecordStore('TX');
+       rs:=openRecordStore('TX');
+       t:=addRecordStoreEntry(rs,'');
+       closeRecordStore(rs);
+      end;
+    end;
+    if m_cur=1 then break;
+     break;
+    end;
+
+   for ix:=0 to getWidth/16 do
+   for iy:=1 to 7 do
+    drawimage(bg[1],ix*16,iy*16);
+   for ix:=0 to getWidth/16 do
+    drawimage(bg[0],ix*16,0);
+   for ix:=0 to getWidth/16 do
+   for iy:=8 to getHeight/16 do
+    drawimage(bg[0],ix*16,iy*16);
+
+   if max_r>-1 then
+    begin
+     setcolor(0,0,0);
+     fillrect(32,24,getWidth-64,96);
+     setclip(32,24,getWidth-64,96);
+     drawimage(im_game,(getWidth/2)-(32),32);
+     drawfonttext(names[cur_name],(getWidth/2)-(length(names[cur_name])*8/2),104);
+     setclip(0,0,getWidth,getHeight);
+     setcolor(128,128,128);
+     drawrect(32,24,getWidth-64,96);
+     if cur_name>0 then drawimage(gui[20],0,58);
+     if cur_name<max_r then drawimage(gui[21],getWidth-9,58);
+    end;
+
+   drw_btn('Done',0,m_cur,32,1);
+   drw_btn('Back',1,m_cur,32,1);
+
+   drawVideo;
+   delay(1);
+  until false;
+ end;
+
+procedure menu_sett;
+var
+  ix,iy,m_cur:integer;
+ begin
+  m_cur:=-3;
+  repeat
+   updateKeys;
+   if clickedKey(KEY_MENU_UP) then
+    begin
+     m_cur:=m_cur-1;
+     if m_cur<-3 then m_cur:=5;
+    end;
+   if clickedKey(KEY_MENU_DOWN) then
+    begin
+     m_cur:=m_cur+1;
+     if m_cur>5 then m_cur:=-3;
+    end;
+   if clickedKey(KEY_MENU_SELECT) then
+    begin
+     if m_cur=-3 then
+      begin
+       light_type:=light_type+1;
+       if light_type>2 then light_type:=0;
+      end; else
+     if m_cur=-2 then
+      begin
+       ifosad:=not ifosad;
+      end; else
+     if m_cur=-1 then
+      begin
+       s_particles:=not s_particles;
+      end; else
+     if m_cur=0 then
+      begin
+       drawgui:=not drawgui;
+      end; else
+     if m_cur=1 then
+      begin
+       if question('Are you sure?')=true then
+        begin
+         if load_key_tex=0 then
+          begin
+           load_key_tex:=1;
+           init_touch;
+           //load_virt_tex(ld_tex('touch.png','/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/','gui/'));
+          end;
+         else
+         if load_key_tex=1 then
+          begin
+           load_key_tex:=0;
+           resetVirtualKeyboard(-1);
+          end;
+        end;
+      end;
+     if m_cur=2 then
+      begin
+       s_jpeg_quality:=stringtointeger(gettext('JPEG quality:',''+s_jpeg_quality,3,TF_NUMERIC));
+       if s_jpeg_quality>100 then s_jpeg_quality:=100; else
+       if s_jpeg_quality<0 then s_jpeg_quality:=0;
+      end; else
+     if m_cur=3 then
+      begin
+       setsd(true);
+      end; else
+     if m_cur=4 then
+      begin
+       deleteRecordStore('S');
+       deleteRecordStore('SD');
+       deleteRecordStore('TX');
+       halt;
+      end; else
+     if m_cur=5 then
+      begin
+       save_settings;
+       break;
+      end; else
+    end;
+
+   for ix:=0 to getWidth/16 do
+   for iy:=0 to getHeight/16 do
+    drawimage(bg[0],ix*16,iy*16);
+
+   drw_btn('Light:'+light_type,-3,m_cur,0,1);
+   drw_btn('Weather:'+ifosad,-2,m_cur,0,1);
+   drw_btn('Particles:'+s_particles,-1,m_cur,0,1);
+   drw_btn('Hide GUI:'+not drawgui,0,m_cur,0,1);
+   drw_btn('Touch:'+(load_key_tex>0),1,m_cur,0,1);
+   drw_btn('JPEG:'+s_jpeg_quality,2,m_cur,0,1);
+   drw_btn('Set Root',3,m_cur,0,1);
+   drw_btn('Reset',4,m_cur,0,1);
+   drw_btn('Back',5,m_cur,0,1);
+
+   drawVideo;
+   delay(1);
+  until false;
+ end;
+
+procedure menu_help;
+ var
+  ix,iy,cur:integer;
+ begin
+  repeat
+   updateKeys;
+   if clickedKey(KEY_MENU_SELECT) then break;
+   if pressedKey(KEY_MENU_UP) then cur:=cur+1;
+   if pressedKey(KEY_MENU_DOWN) then cur:=cur-1;
+
+   for ix:=0 to getWidth/16 do
+   for iy:=2 to (getHeight/16)-2 do
+    drawimage(bg[1],ix*16,iy*16);
+
+   for ix:=0 to getWidth/16 do
+   for iy:=0 to 1 do
+    drawimage(bg[0],ix*16,iy*16);
+
+   for ix:=0 to getWidth/16 do
+   for iy:=(getHeight/16)-2 to getHeight/16 do
+    drawimage(bg[0],ix*16,iy*16);
+
+   setclip(0,32,getWidth,(getHeight/16-4)*16);
+
+   drw_txt('Controls:',cur,0,1);
+   drw_txt('Left - Move left',cur,1,0);
+   drw_txt('Right - Move right',cur,2,0);
+   drw_txt('Up - Jump',cur,3,0);
+   drw_txt('Down - Put a block under you',cur,4,0);
+   drw_txt('1 - Inventory',cur,5,0);
+   drw_txt('Duble 1 - Craft',cur,6,0);
+   drw_txt('3 - Use block',cur,7,0);
+   drw_txt('7 - Debug info',cur,8,0);
+   drw_txt('Hold 7 - Console',cur,9,0);
+   drw_txt('9 - Pause',cur,10,0);
+   drw_txt('*, # - Browse inventory',cur,11,0);
+   drw_txt('0 - Edit mode',cur,12,0);
+
+   drw_txt('In inventory/chest:',cur,14,1);
+   drw_txt('3 - Enject object',cur,15,0);
+   drw_txt('Hold 3 - Enject stack',cur,16,0);
+   drw_txt('5 - Move the stack',cur,17,0);
+   drw_txt('Hold 5 - Divide stack',cur,18,0);
+
+   setclip(0,0,getWidth,getHeight);
+
+   drw_btn('Back',0,0,getHeight-getHeight/2-16-6,1);
+
+   drawVideo;
+   delay(1);
+  until false;
+ end;
+
+procedure menu_about;
+ var
+  ix,iy,cur:integer;
+ begin
+  repeat
+   updateKeys;
+   if clickedKey(KEY_MENU_SELECT) then break;
+   if pressedKey(KEY_MENU_UP) then cur:=cur+1;
+   if pressedKey(KEY_MENU_DOWN) then cur:=cur-1;
+
+   for ix:=0 to getWidth/16 do
+   for iy:=2 to (getHeight/16)-2 do
+    drawimage(bg[1],ix*16,iy*16);
+
+   for ix:=0 to getWidth/16 do
+   for iy:=0 to 1 do
+    drawimage(bg[0],ix*16,iy*16);
+
+   for ix:=0 to getWidth/16 do
+   for iy:=(getHeight/16)-2 to getHeight/16 do
+    drawimage(bg[0],ix*16,iy*16);
+
+   setclip(0,32,getWidth,(getHeight/16-4)*16);
+
+   drw_txt('Developers:',cur,0,1);
+   drw_txt(#68+#101+#97+#68+#68+#111+#111+#77+#69+#82+' - Programmer',cur,1,0);//dead
+   drw_txt(#102+#114+#101+#100+#45+#98+#111+#121+' - Programmer',cur,2,0);//fred-boy
+   drw_txt(#65+#110+#100+#114+#101+#121+#53+#57+' - Programmer',cur,3,0);//andrey59
+   drw_txt(#89+#117+#82+#97+#78+#110+#78+#122+#90+#90+' - Artist',cur,4,0);//yura
+   drw_txt(#83+#97+#115+#104+#97+#71+' - Artist and idea generator',cur,5,0);//sasha
+   drw_txt(#66+#97+#74+#108+#101+#72+#84+#105+#72+' - Artist and tester',cur,6,0);//valentin
+   drw_txt(#65+#103+#114+#101+#115+#115+#111+#82+' - Tester',cur,7,0);//agressor
+   drw_txt(#118+#111+#108+#121+#97+#95+#110+#97+#115+#116+#97+#110+#101+' - Tester',cur,8,0);//volya
+   drw_txt(#97+#98+#97+#100+#111+#110+' - Tester',cur,9,0);//abadon
+   drw_txt(#77+#111+#110+#111+#103+#114+#111+#109+' - Tester',cur,10,0);//monogrom
+   drw_txt(#75+#97+#108+#116+#101+#114+' - Tester',cur,11,0);//kalter
+
+   drw_txt('Thanks:',cur,12,1);
+   drw_txt('Piligrim and 0vZ - Lib_jsr75i',cur,13,0);
+   drw_txt('Piligrim - Lib_effects',cur,14,0);
+   drw_txt('Kurdt - Lib_canvas',cur,15,0);
+   drw_txt('ViNT - Lib_png and Lib_bmp',cur,16,0);
+   drw_txt('aleshka - Lib_jpeg',cur,17,0);
+   drw_txt('Roman_V - Lib_safeload',cur,18,0);
+
+   drw_txt('Site: '+#104+#116+#116+#112+#58+#47+#47+#100+#101+#97+#100+#115+#111+#102+#116+#119+#97+#114+#101+#46+#114+#117,cur,21,0);
+   drw_txt(#68+#101+#97+#68+#83+#111+#102+#116+#87+#97+#114+#101+' 2012-'+getyear(getcurrenttime),cur,22,0);
+
+   drw_txt('Hello! :D',cur,100,1);
+
+   setclip(0,0,getWidth,getHeight);
+
+   drw_btn('Back',0,0,getHeight-getHeight/2-16-6,1);
+
+   drawVideo;
+   delay(1);
+  until false;
+ end;
+
+function sm_siz:integer;
+ begin
+  sm_siz:=(getWidth+getHeight)/5;
+ end;
+
+function sm_siz4:integer;
+ begin
+  sm_siz4:=sm_siz/4;
+ end;
+
+procedure draw_in_menu;
+ var
+  maxx,minx,maxy,miny,ix,iy,iz,tim,smy:integer;
+ begin
+  if menu_background=1 then
+   begin
+    tim:=10000*getimagewidth(sky)/600000*gt/10000;
+    setcolor(effects.get(sky,tim,0,1),effects.get(sky,tim,0,2),effects.get(sky,tim,0,3));
+    fillrect(0,0,getWidth,getHeight);
+    if drw_stars and ((gt>260000) or (gt<45000)) then
+     begin
+      srand(07061997);
+      setcolor(effects.get(sky,tim,2,1),effects.get(sky,tim,2,2),effects.get(sky,tim,2,3));
+      smy:=10000*getWidth*2/600000*gt/10000;
+      for iz:=1 to getWidth do
+        begin
+         ix:=rnd(getWidth*2)-getWidth+smy;
+         if ix>getWidth then ix:=ix-getWidth*2;
+         iy:=rnd(getHeight);
+        if (ix>-1) and (ix<getWidth) then plot(ix,iy);
+        end;
+      end;
+   if drw_sm then
+    begin
+     if load_sm>0 then
+      begin
+       smy:=10000*(getWidth+getimagewidth(sun))/300000*gt/10000;
+       drawimage(sun,smy-getimagewidth(sun),getHeight/2-getimageheight(sun)/2);
+      end;
+     else
+      begin
+       setcolor(255,213,74);
+       smy:=10000*(getWidth+sm_siz)/300000*gt/10000;
+       fillrect(smy-sm_siz+sm_siz4,getHeight/2-sm_siz/2+sm_siz4,sm_siz-sm_siz4,sm_siz-sm_siz4);
+      end;
+     if load_sm>0 then
+      begin
+       smy:=10000*(getWidth+getimagewidth(moon))/300000*(gt-300000)/10000;
+       drawimage(moon,smy-getimagewidth(moon),getHeight/2-getimageheight(moon)/2);
+      end;
+     else
+      begin
+       setcolor(175,184,204);
+       smy:=10000*(getWidth+sm_siz)/300000*(gt-300000)/10000;
+       fillrect(smy-sm_siz+sm_siz4,getHeight/2-sm_siz/2+sm_siz4,sm_siz-sm_siz4,sm_siz-sm_siz4);
+      end;
+    end;
+    gt:=gt+10;
+    if gt>600000 then gt:=0;
+  {===================[max_draw]===================}
+    minx:=camx/16;
+    miny:=camy/16;
+    maxx:=(camx+getWidth)/16;
+    maxy:=(camy+getHeight)/16;
+    if minx<0 then minx:=0;
+    if miny<0 then miny:=0;
+    if maxx>255 then maxx:=255;
+    if maxy>127 then maxy:=127;
+  {===================[draw_blocks]===================}
+    for ix:=minx to maxx do
+    for iy:=miny to maxy do
+     begin
+      if getmap(ix,iy)>0 then drawimage(tex[getBlockTex(getmap(ix,iy))],(ix*16)-camx,(iy*16)-camy);
+     end;
+   end; else for ix:=0 to getWidth/16 do for iy:=0 to getHeight/16 do drawImage(bg[0],ix*16,iy*16);
+ end;
+
+procedure menu;
+ var
+  m_cur,ix,iy,iz,velcam:integer;
+  key,spl_i:integer;
+  splash:string;
+  res:resource;
+  time:integer;
+  cavelogo:image;
+  spl_y,spl_del:integer;
+  spl_y_b:boolean;
+ begin
+  camx:=0;
+  velcam:=2;
+  if menu_background>0 then
+   begin
+    seed:=getrelativetimems;
+    srand(seed);
+    genworld;
+   end;
+  camy:=(get_spawn_y*16)-(getHeight/2);
+  setfont(FONT_FACE_SYSTEM,FONT_STYLE_PLAIN,FONT_SIZE_SMALL);
+  cavelogo:=ld_tex('cavelogo.png','/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/','title/');
+  splash:='#ERROR';
+  spl_y:=getimageheight(cavelogo);
+  spl_y_b:=true;
+  spl_del:=getrelativetimems;
+  res:=openResource('/title/splashes.txt');
+  if ResourceAvailable(res) then
+   begin
+    spl_i:=stringtointeger(readline(res));
+    iy:=random(spl_i-1)+1;
+    debug('SPLASH #'+iy);
+    for ix:=1 to iy do
+     splash:=readline(res);
+    closeresource(res);
+   end;
+  time:=getcurrenttime;
+  if (getmonth(time)=5) and (getday(time)=7) then splash:='Happy birthday, DeaDDooMER!';
+  if ((getmonth(time)=0) and (getday(time)<3)) or ((getmonth(time)=11) and (getday(time)>29)) then splash:='Happy New Year!';
+  repeat
+   updateKeys;
+   if clickedKey(KEY_MENU_UP) then
+    begin
+     m_cur:=m_cur-1;
+     if m_cur<0 then m_cur:=5;
+    end;
+   if clickedKey(KEY_MENU_DOWN) then
+    begin
+     m_cur:=m_cur+1;
+     if m_cur>5 then m_cur:=0;
+    end;
+   if clickedKey(KEY_MENU_SELECT) then
+    begin
+     if m_cur=0 then begin if menu_game then break; end;
+      else
+     if m_cur=1 then menu_tex;
+      else
+     if m_cur=2 then menu_sett;
+      else
+     if m_cur=3 then menu_help;
+      else
+     if m_cur=4 then menu_about;
+      else
+     if m_cur=5 then begin save_settings; halt; end;
+    end;
+
+   if menu_background>0 then draw_in_menu;
+
+   camx:=camx+velcam;
+   if camx>256*16-getWidth then velcam:=-2;
+   if camx<0 then velcam:=2;
+
+   drawimage(cavelogo,(getWidth/2)-(getimagewidth(cavelogo)/2),0);
+   setcolor(255,255,0);
+
+   DrawFontTextSpec(splash, (getWidth/2)-(length(splash)*FONT_SYM_SIZE/2), spl_y, FONT_YELLOW_COLOR, true);
+
+   if spl_y_b then begin if getrelativetimems-spl_del>64 then begin spl_y:=spl_y+1; spl_del:=getrelativetimems; end; if spl_y>getimageheight(cavelogo)+2 then spl_y_b:=false; end;
+   if not spl_y_b then begin if getrelativetimems-spl_del>64 then begin spl_y:=spl_y-1; spl_del:=getrelativetimems; end; if spl_y<getimageheight(cavelogo)+1 then spl_y_b:=true; end;
+   drawfonttext(version,0,getHeight-8);
+
+   drw_btn('Singleplayer',0,m_cur,0,1);
+   drw_btn('Texture Packs',1,m_cur,0,1);
+   drw_btn('Options',2,m_cur,0,1);
+   drw_btn('Help',3,m_cur,0,1);
+   drw_btn('About',4,m_cur,0,1);
+   drw_btn('Quit Game',5,m_cur,0,1);
+
+   drawVideo;
+   proc_fps;
+   maxfps;
+  until false;
+ end;
+
+function setBlock(invcur, x, y:integer):boolean;
+ var
+  item, sum, block, sblock:integer;
+ begin
+  item:=inv.getItem(invcur);
+  sum:=inv.getSum(invcur);
+  block:=getMap(x, y);
+  sblock:=getItemInfo(item);
+
+  if getItemType(item)=ITEM_TYPE_BLOCK then
+  if inv.isNull(invcur)=false then
+  if getBlockSet(block)=true then
+  if (coll_xy(x, y)=false) or (getBlockColl(item)=0) then
+   begin
+    if set_block_code(sblock, x, y)=false then
+     begin
+
+      setmap(sblock, x, y);
+      if gamemode<>1 then
+       begin
+        inv.setSum(inv.getSum(invcur)-1, invcur);
+        inv.fixNull(invcur);
+       end;
+
+      setBlock:=true;
+     end;
+   end;
+ end;
+
+procedure fishing;
+ var
+  x, y:integer;
+ begin
+  x:=player.getX;
+  y:=player.getY;
+  if (getrelativetimems-fish_time>5000) and (getmap(fx,fy)=50) then
+   begin
+    if (random(3)=2) and (getmap(fx,fy)=50) then
+     begin
+      drop.create(210,1,x,y);
+      fish:=false;
+     end;
+    inv.setSum(inv.getSum(invslot)-1, invslot);
+    inv.fixNull(invslot);
+    fish:=false;
+   end; else
+  if (getrelativetimems-fish_time<5000) and (getmap(fx,fy)=50) and (fish=true) then
+   begin
+    if (getmap(fx,fy-1)=50) and ((getrelativetimems-fish_time) mod 300=0) then fy:=fy-1;
+   end;
+ end;
+
+procedure drawminimap;
+ var
+  ix,iy,tmp_gx,tmp_gy,minx,miny,maxx,maxy,loc_camx,loc_camy,x,y:integer;
+ begin
+  x:=player.getX;
+  y:=player.getY;
+  if load_minimap_tex then
+   begin
+    tmp_gx:=(getWidth/2)-(getimagewidth(gui[16])/2);
+    tmp_gy:=(getHeight/2)-(getimageheight(gui[16])/2);
+   end;
+  else
+   begin
+    tmp_gx:=(getWidth/2)-(64/2);
+    tmp_gy:=(getHeight/2)-(64/2);
+   end;
+
+  loc_camx:=(x+4)-(864/2);
+  loc_camy:=(y+4)-(864/2);
+  if loc_camx<0 then loc_camx:=0;
+  if loc_camx>4096-864 then loc_camx:=4096-864;
+  if loc_camy<0 then loc_camy:=0;
+  if loc_camy>2048-864 then loc_camy:=2048-864;
+  minx:=loc_camx/16;
+  miny:=loc_camy/16;
+  maxx:=(loc_camx+864)/16;
+  maxy:=(loc_camy+864)/16;
+  if minx<0 then minx:=0;
+  if miny<0 then miny:=0;
+  if maxx>255 then maxx:=255;
+  if maxy>127 then maxy:=127;
+
+  if load_minimap_tex then
+   drawimage(gui[16],tmp_gx,tmp_gy);
+  else
+   begin
+    setcolor(214,190,150);
+    fillrect(tmp_gx,tmp_gy,64,64);
+   end;
+
+  for ix:=minx to maxx do
+  for iy:=miny to maxy do
+   begin
+    if (getmap(ix,iy)=1) or (getmap(ix,iy)=2) or (getmap(ix,iy)=74) then setcolor(121,85,58); else
+    if (getmap(ix,iy)=4) or (getmap(ix,iy)=9) or (getmap(ix,iy)=11) or (getmap(ix,iy)=28) or (getmap(ix,iy)=29) or ((getmap(ix,iy)>=77) and (getmap(ix,iy)<=86)) or ((getmap(ix,iy)>=88) and (getmap(ix,iy)<=101)) then setcolor(188,152,98); else
+    if (getmap(ix,iy)=50) or (getmap(ix,iy)=62) then setcolor(38,92,255); else
+    if getmap(ix,iy)=51 then setcolor(255,0,0); else
+    if (getmap(ix,iy)=61) or (getmap(ix,iy)=32) then setcolor(255,255,255); else
+    setcolor(127,127,127);
+
+    if (getmap(ix,iy)<>0) then plot(tmp_gx+4+ix-minx,tmp_gy+4+iy-miny);
+   end;
+  setcolor(0,0,255);
+ end;
+
+procedure draw_sign;
+ var
+  tmp:string;
+  str:array[0..3] of string;
+  i,j,tmp_gx,tmp_gy:integer;
+ begin
+  if load_gui_tex then
+   begin
+    tmp_gx:=(getWidth/2)-(getimagewidth(sign_im)/2);
+    tmp_gy:=(getHeight/2)-(getimageheight(sign_im)/2);
+   end;
+  else
+   begin
+    tmp_gx:=(getWidth/2)-(120/2);
+    tmp_gy:=(getHeight/2)-(60/2);
+   end;
+
+  for i:=0 to 3 do
+   str[i]:='';
+  j:=0;
+  tmp:=sign[getmapinfo(curx,cury)];
+  while pos(tmp,#13)<>-1 do
+   begin
+    i:=pos(tmp,#13);
+    str[j]:=copy(tmp,0,i);
+    tmp:=copy(tmp,i+1,length(tmp));
+    j:=j+1;
+   end;
+
+  if load_gui_tex then
+   drawimage(sign_im,tmp_gx,tmp_gy);
+  else
+   begin
+    setcolor(159,132,77);
+    fillrect(tmp_gx,tmp_gy,120,60);
+   end;
+
+  drawfonttext(str[0],tmp_gx+(120/2)-(length(str[0])*8/2),tmp_gy+(60/4/2)+4);
+  drawfonttext(str[1],tmp_gx+(120/2)-(length(str[1])*8/2),tmp_gy+(60/4/2)+8+4);
+  drawfonttext(str[2],tmp_gx+(120/2)-(length(str[2])*8/2),tmp_gy+(60/4/2)+16+4);
+  drawfonttext(str[3],tmp_gx+(120/2)-(length(str[3])*8/2),tmp_gy+(60/4/2)+24+4);
+ end;
+
+procedure draw_back(ix,iy:integer);
+ begin
+  if getBiomMap(ix)=0 then
+   begin
+    if (getBackMap(ix)=iy) then drawimage(back[0],(ix*16)-camx,(iy*16)-camy); else
+    if (getBackMap(ix)+1=iy) then drawimage(back[1],(ix*16)-camx,(iy*16)-camy); else
+    if (getBackMap(ix)+2=iy) then drawimage(back[1],(ix*16)-camx,(iy*16)-camy); else
+    if (getBackMap(ix)+3=iy) then drawimage(back[1],(ix*16)-camx,(iy*16)-camy); else
+    if (getBackMap(ix)<iy) then drawimage(back[2],(ix*16)-camx,(iy*16)-camy);
+   end; else
+  if getBiomMap(ix)=1 then
+   begin
+    if (getBackMap(ix)=iy) then drawimage(back[4],(ix*16)-camx,(iy*16)-camy); else
+    if (getBackMap(ix)+1=iy) then drawimage(back[4],(ix*16)-camx,(iy*16)-camy); else
+    if (getBackMap(ix)+2=iy) then drawimage(back[6],(ix*16)-camx,(iy*16)-camy); else
+    if (getBackMap(ix)+3=iy) then drawimage(back[6],(ix*16)-camx,(iy*16)-camy); else
+    if (getBackMap(ix)<iy) then drawimage(back[2],(ix*16)-camx,(iy*16)-camy);
+   end; else
+  if getBiomMap(ix)=2 then
+   begin
+    if (getBackMap(ix)=iy) then drawimage(back[5],(ix*16)-camx,(iy*16)-camy); else
+    if (getBackMap(ix)+1=iy) then drawimage(back[1],(ix*16)-camx,(iy*16)-camy); else
+    if (getBackMap(ix)+2=iy) then drawimage(back[1],(ix*16)-camx,(iy*16)-camy); else
+    if (getBackMap(ix)+3=iy) then drawimage(back[1],(ix*16)-camx,(iy*16)-camy); else
+    if (getBackMap(ix)<iy) then drawimage(back[2],(ix*16)-camx,(iy*16)-camy);
+   end; else
+  if getBiomMap(ix)=3 then
+   begin
+    if (getBackMap(ix)=iy) then drawimage(back[7],(ix*16)-camx,(iy*16)-camy); else
+    if (getBackMap(ix)+1=iy) then drawimage(back[1],(ix*16)-camx,(iy*16)-camy); else
+    if (getBackMap(ix)+2=iy) then drawimage(back[1],(ix*16)-camx,(iy*16)-camy); else
+    if (getBackMap(ix)+3=iy) then drawimage(back[1],(ix*16)-camx,(iy*16)-camy); else
+    if (getBackMap(ix)<iy) then drawimage(back[2],(ix*16)-camx,(iy*16)-camy);
+   end; else
+  if getBiomMap(ix)=4 then
+   begin
+    drawimage(back[8],(ix*16)-camx,(iy*16)-camy);
+   end;
+ end;
+
+procedure draw;
+ var
+  ix,iy,iz,minx,miny,maxx,maxy,tmp_ax,tim,smy,pa_xo, x, y:integer;
+ begin
+  x:=player.getX;
+  y:=player.getY;
+  {===================[sky]===================}
+  tim:=10000*getimagewidth(sky)/600000*game_time/10000;
+  setcolor(effects.get(sky,tim,0,1),effects.get(sky,tim,0,2),effects.get(sky,tim,0,3));
+  fillrect(0,0,getWidth,getHeight);
+  srand(seed);
+  if drw_stars and ((game_time>260000) or (game_time<45000)) then
+   begin
+    setcolor(effects.get(sky,tim,2,1),effects.get(sky,tim,2,2),effects.get(sky,tim,2,3));
+    smy:=10000*getWidth*2/600000*game_time/10000;
+    for iz:=1 to getWidth do
+     begin
+      ix:=rnd(getWidth*2)-getWidth+smy;
+      if ix>getWidth then ix:=ix-getWidth*2;
+      iy:=rnd(getHeight);
+     if (ix>-1) and (ix<getWidth) then plot(ix,iy);
+     end;
+   end;
+
+  if drw_sm then
+   begin
+    if load_sm>0 then
+     begin
+      smy:=10000*(getWidth+getimagewidth(sun))/300000*game_time/10000;
+      drawimage(sun,smy-getimagewidth(sun),getHeight/2-getimageheight(sun)/2);
+     end;
+    else
+     begin
+      setcolor(255,213,74);
+      smy:=10000*(getWidth+sm_siz)/300000*game_time/10000;
+      fillrect(smy-sm_siz+sm_siz4,getHeight/2-sm_siz/2+sm_siz4,sm_siz-sm_siz4,sm_siz-sm_siz4);
+     end;
+
+    if load_sm>0 then
+     begin
+      smy:=10000*(getWidth+getimagewidth(moon))/300000*(game_time-300000)/10000;
+      drawimage(moon,smy-getimagewidth(moon),getHeight/2-getimageheight(moon)/2);
+     end;
+    else
+     begin
+      setcolor(175,184,204);
+      smy:=10000*(getWidth+sm_siz)/300000*(game_time-300000)/10000;
+      fillrect(smy-sm_siz+sm_siz4,getHeight/2-sm_siz/2+sm_siz4,sm_siz-sm_siz4,sm_siz-sm_siz4);
+     end;
+   end;
+  {===================[camera]===================}
+  camx:=(x+4)-(getWidth/2);
+  camy:=(y+4)-(getHeight/2);
+  if camx<0 then camx:=0;
+  if camx>4096-getWidth then camx:=4096-getWidth;
+  if camy>2048-getHeight then camy:=2048-getHeight;
+  {===================[max_draw]===================}
+  minx:=camx/16;
+  miny:=camy/16;
+  maxx:=(camx+getWidth)/16;
+  maxy:=(camy+getHeight)/16;
+  if minx<0 then minx:=0;
+  if miny<0 then miny:=0;
+  if maxx>255 then maxx:=255;
+  if maxy>127 then maxy:=127;
+  {===================[precipitation]===================}
+  //Осадки - отдельным слоем, с непрерывной прокруткой вниз (не привязаны к сетке блоков)
+  if ifosad and (osadki=true) then
+   for ix:=minx to maxx do
+    begin
+     tim:=getBiomMap(ix);
+     if (tim=0) or (tim=2) or (tim=3) then
+      for iy:=miny-1 to maxy do
+       if iy>=0 then
+        if (getBackMap(ix)>=iy) and getBlockTrans(getmap(ix,iy)) then
+         begin
+          if tim=2 then
+           drawimage(osad[1,osadki_ani],(ix*16)-camx,((iy*16)-camy)+osadki_scr)
+          else
+           drawimage(osad[0,osadki_ani],(ix*16)-camx,((iy*16)-camy)+osadki_scr);
+         end;
+    end;
+  {===================[draw_back]===================}
+  for ix:=minx to maxx do
+  for iy:=miny to maxy do
+   begin
+    if drw_back then
+     if getBlockTrans(getmap(ix,iy)) then
+      draw_back(ix,iy);
+
+    if getBlockFore(getmap(ix,iy))=false then
+     draw_block(ix,iy);
+   end;
+  {===================[drop]===================}
+  drop.draw(camx, camy);
+  {===================[particles]===================}
+  if s_particles then draw_particle;
+  {===================[player]===================}
+  if hp>0 then
+   begin
+    player.draw(camx, camy);
+   end;
+
+  {===================[mobs]===================}
+  if drw_mobs then draw_mobs;
+  {===================[draw_blocks]===================}
+  for ix:=minx to maxx do
+  for iy:=miny to maxy do
+   begin
+    if getBlockFore(getmap(ix,iy))=true then
+     draw_block(ix,iy);
+
+    setcolor(0,0,0);
+    if (light_type=1) then begin if getmaplight(ix,iy)=0 then fillrect((ix*16)-camx,(iy*16)-camy,16,16); end;
+     else
+    if light_type=2 then begin if getmaplight(ix,iy)<15 then begin if (ix*16-camx<getWidth) and (ix*16-camx>0-16) and (iy*16-camy<getHeight) and (iy*16-camy>0-16) then drawimage(light[getmaplight(ix,iy)],(ix*16)-camx,(iy*16)-camy); end; end;
+   end;
+   if (toolus>0) and (toolind<10) and (getmap(curx,cury)>0) then begin if toolind>9 then toolind:=9; drawimage(tue[toolind],curx*16-camx,cury*16-camy); end;
+  {===================[gui]===================}
+  if drawgui then
+   begin
+    tmp_ax:=(getWidth/2)-(getImageWidth(gui[1])/2);
+
+    if keymode=1 then
+     drawimage(gui[0],curx*16-camx,cury*16-camy);
+
+    DrawWindows;
+    /*if keymode=2 then
+     if gamemode<>1 then
+      DrawPlayerInventory;
+     else
+      drawinv_c; else
+    if keymode=3 then drawcraft; else
+    if keymode=4 then drawchest; else
+    if keymode=5 then draw_sign; else
+    if keymode=6 then drawfurnace; else
+    if ifminimap then drawminimap;*/
+
+    drawimage(gui[1],tmp_ax,0);
+    for ix:=0 to 8 do
+     begin
+      drawItem(inv.getItem(ix), inv.getSum(ix), (ix*16)+tmp_ax+ix*2+4, 1, true);
+     end;
+    drawimage(gui[17],(invslot*16)+tmp_ax+invslot*2+2,0);
+
+    if gamemode<>1 then
+     begin
+      if gamemode=0 then
+       begin
+        for ix:=0 to (hp div 2)-1 do drawimage(gui[13],ix*9,getHeight-9);
+        if (hp mod 2)<>0 then begin drawimage(gui[14],ix*9,getHeight-9); ix:=ix+1 end;
+        for ix:=ix to 9 do drawimage(gui[15],ix*9,getHeight-9);
+       end; else
+      if gamemode=2 then
+       begin
+        for ix:=0 to (hp div 2)-1 do drawimage(gui[31],ix*9,getHeight-9);
+        if (hp mod 2)<>0 then begin drawimage(gui[32],ix*9,getHeight-9); ix:=ix+1 end;
+        for ix:=ix to 9 do drawimage(gui[33],ix*9,getHeight-9);
+       end;
+
+      for ix:=0 to (hunger div 2)-1 do drawimage(gui[26],ix*9,getHeight-18);
+      if (hunger mod 2)<>0 then begin drawimage(gui[27],ix*9,getHeight-18); ix:=ix+1 end;
+      for ix:=ix to 9 do drawimage(gui[28],ix*9,getHeight-18);
+
+      if getmap((x+4)/16,y/16)=50 then
+        begin
+            for ix:=0 to (air div 2)-1 do drawimage(gui[29],ix*9,getHeight-27);
+            if (air mod 2)<>0 then begin drawimage(gui[30],ix*9,getHeight-27); ix:=ix+1 end;
+        end;
+     end;
+
+    for ix:=0 to 3 do
+     begin
+      drawfonttext(msg[ix],0,getHeight-20-ix*9);
+      if getrelativetimems-msg_time[ix]>5000 then msg[ix]:='';
+     end;
+   end;
+ end;
+
+procedure load_moon(path:string;phase:integer);
+ var
+  no:image;
+ begin
+  moon:=no;
+    if load_sm=1 then
+     begin
+      moon:=ld_tex('moon_phase_'+phase+'.png',path,'terrain/moon_phases/');
+     end; else
+    if load_sm=2 then
+     begin
+      moon:=resize_image(ld_tex('moon_phase_'+phase+'.png',path,'terrain/moon_phases/'),(getWidth+getHeight)/5,(getWidth+getHeight)/5);
+     end;
+ end;
+
+procedure sleep;
+ var
+  i,ix,iy:integer;
+ begin
+  if game_time>300000 then
+   begin
+    if load_light_tex then
+     begin
+      keymode:=0;
+      i:=15;
+      while i>0 do
+       begin
+        for iy:=0 to getheight/16 do
+         for ix:=0 to getwidth/16 do
+          drawimage(light[i],ix*16,iy*16);
+        i:=i-1;
+        drawVideo;
+        delay(100);
+       end;
+      moon_phase:=moon_phase+1;
+      if moon_phase>7 then moon_phase:=0;
+      load_moon('/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/',moon_phase);
+      game_time:=50000;
+      last_sleep_x:=curx;
+      last_sleep_y:=cury-1;
+      i:=1;
+      while i<15 do
+       begin
+        draw;
+        for iy:=0 to getheight/16 do
+         for ix:=0 to getwidth/16 do
+          drawimage(light[i],ix*16,iy*16);
+        i:=i+1;
+        drawVideo;
+        delay(100);
+       end;
+     end;
+    else
+     begin
+      keymode:=0;
+      i:=0;
+      while i<=getheight do
+       begin
+        setcolor(0,0,0);
+        fillrect(0,0,getwidth,i);
+        i:=i+5;
+        drawVideo;
+        delay(50);
+       end;
+      moon_phase:=moon_phase+1;
+      if moon_phase>7 then moon_phase:=0;
+      load_moon('/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/',moon_phase);
+      game_time:=50000;
+      last_sleep_x:=curx;
+      last_sleep_y:=cury-1;
+      i:=0;
+      while i<=getheight do
+       begin
+        draw;
+        setcolor(0,0,0);
+        fillrect(0,i,getwidth,getheight);
+        i:=i+5;
+        drawVideo;
+        delay(50);
+       end;
+     end;
+   end; else create_msg('You can sleep only at night');
+ end;
+
+procedure weap_proc(i:integer);
+ begin
+  if getItemType(inv.getItem(invslot))=ITEM_TYPE_TOOL then
+   begin
+    mob[i].m_hp:=mob[i].m_hp-getToolDamg(inv.getItem(invslot));
+    inv.setSum(inv.getSum(invslot)-1, invslot);
+    inv.fixNull(invslot);
+   end;
+  else
+   mob[i].m_hp:=mob[i].m_hp-1;
+
+  mob[i].m_vely:=mob[i].m_vely+3;
+  if mob[i].m_type=10 then
+   mob[i].m_type:=9;
+ end;
+
+procedure useweap(xx,yy:integer);
+ var
+  i:integer;
+ begin
+  xx:=xx*16;
+  yy:=yy*16;
+  for i:=0 to 31 do
+   if mob[i].m_type<>0 then
+    begin
+     if CollTwoObj(xx,yy,16,32,mob[i].m_x,mob[i].m_y, MobW(i), MobH(i)) then
+      begin
+       weap_proc(i);
+       break;
+      end;
+    end;
+ end;
+
+procedure resetToolProgerss;
+ begin
+  toolus:=0;
+  toolind:=0;
+ end;
+
+procedure usetools(invcur, x, y:integer);
+ var
+  item, sum, block, bhp:integer;
+ begin
+  block:=getmap(x, y);
+  bhp:=getBlockHP(block);
+  item:=inv.getItem(invcur);
+  sum:=inv.getSum(invcur);
+
+  if gamemode=1 then
+   destroy_block_cr(block, x, y);
+  else
+  if (block>0) then
+   begin
+    if (getItemType(item)=ITEM_TYPE_TOOL) and (getBlockTool(block)=getToolType(item)) then
+     toolus:=toolus+getToolSpeed(item);
+    else
+     toolus:=toolus+1;
+
+    if toolus>=bhp then
+     begin
+      if ((getItemType(item)=ITEM_TYPE_TOOL) and (getBlockTool(block)=getToolType(item)) and (getToolLvl(item)>=getBlockLvl(block))) or (getBlockLvl(block)<=0) then
+       begin
+        setMap(0, x, y);
+        destroy_block_1(block, x, y);
+        setMapInfo(0, x, y);
+       end;
+      else
+       begin
+        setMap(0, x, y);
+        destroy_block_0(block, x, y);
+        setMapInfo(0, x, y);
+       end;
+
+      if getItemType(item)=ITEM_TYPE_TOOL then
+       begin
+        inv.setSum(inv.getSum(invcur)-1, invcur);
+        inv.fixNull(invcur);
+       end;
+
+      toolus:=0;
+      toolind:=0;
+     end;
+   end;
+
+  if (toolus>0) and (toolus<=bhp) then
+   toolind:=((toolus*100) div bhp) div 10;
+ end;
+
+procedure rt_usetools;
+ var
+  x, y:integer;
+ begin
+  x:=player.getX;
+  y:=player.getY;
+
+  if posi=0 then curx:=(x div 16)-1; else curx:=(x div 16)+1;
+  cury:=y div 16;
+  if getmap(curx,cury)=0 then cury:=cury+1;
+
+  if curx<0 then curx:=0;
+  if curx>255 then curx:=255;
+  if cury<0 then cury:=0;
+  if cury>127 then cury:=127;
+
+  usetools(invslot, curx, cury);
+ end;
+
+procedure rt_useweap;
+ var
+  x, y:integer;
+ begin
+  x:=player.getX;
+  y:=player.getY;
+  if posi=0 then curx:=(x div 16)-1; else curx:=(x div 16)+1;
+  cury:=y div 16;
+  if getmap(curx,cury)=0 then cury:=cury+1;
+
+  if curx<0 then curx:=0;
+  if curx>255 then curx:=255;
+  if cury<0 then cury:=0;
+  if cury>127 then cury:=127;
+
+  useweap(curx,cury);
+ end;
+
+procedure rt_usemob;
+ var
+  x, y:integer;
+ begin
+  x:=player.getX;
+  y:=player.getY;
+
+  if posi=0 then curx:=(x div 16)-1; else curx:=(x div 16)+1;
+  cury:=y div 16;
+  if getmap(curx,cury)=0 then cury:=cury+1;
+
+  if curx<0 then curx:=0;
+  if curx>255 then curx:=255;
+  if cury<0 then cury:=0;
+  if cury>127 then cury:=127;
+
+  usemob(curx,cury);
+ end;
+
+procedure actionUse(invcur, x, y:integer);
+ begin
+  if setBlock(invcur, x, y)=false then
+  if useBlock(invcur, x, y) then
+   if useItem(invcur, x, y) then
+ end;
+
+procedure rt_useblock;
+ var
+  x, y:integer;
+ begin
+  x:=player.getX;
+  y:=player.getY;
+
+  if posi=0 then curx:=(x div 16)-1; else curx:=(x div 16)+1;
+  cury:=y div 16;
+  if getmap(curx,cury)=0 then cury:=cury+1;
+
+  if curx<0 then curx:=0;
+  if curx>255 then curx:=255;
+  if cury<0 then cury:=0;
+  if cury>127 then cury:=127;
+
+  actionUse(invslot, curx, cury);
+ end;
+
+procedure go_to_nether;
+ var
+  ix:integer;
+ begin
+  portal_time:=getrelativetimems;
+  savegame('/'+sd+'/cavecraft/saves/'+sav_fl+'/');
+  pl_world:=1;
+  drw_load_line('Matrix',10);
+  if loadworld('/'+sd+'/cavecraft/saves/'+sav_fl+'/')=true then
+   begin
+    player.setX(get_spawn_x*16+4);
+    player.setY((get_up(get_spawn_x)-1)*16);
+   end;
+  else
+   begin
+    for ix:=0 to 31 do
+     begin
+      mob[ix].m_type:=0;
+      mob[ix].m_x:=0;
+      mob[ix].m_y:=0;
+      mob[ix].m_posi:=0;
+      mob[ix].m_velx:=0;
+      mob[ix].m_vely:=0;
+      mob[ix].m_ani:=0;
+      mob[ix].m_min_vely:=0;
+      mob[ix].m_hp:=0;
+      mob[ix].m_del:=0;
+      mob[ix].m_fall:=false;
+      mob[ix].m_jmp:=false;
+      mob[ix].m_velani:=false;
+    end;
+    
+   drop.resetData;
+   gennether;
+   netherspawn;
+  end;
+ end;
+
+procedure go_to_world;
+ begin
+  portal_time:=getrelativetimems;
+  savegame('/'+sd+'/cavecraft/saves/'+sav_fl+'/');
+  pl_world:=0;
+  drw_load_line('Matrix',10);
+  if loadworld('/'+sd+'/cavecraft/saves/'+sav_fl+'/')=true then
+   begin
+    pl_world:=0;
+   end;
+  else
+   begin
+    debug('ERROR!!!');
+    pl_world:=0;
+    genworld;
+    megaspawn;
+   end;
+ end;
+
+procedure plr_is_dead_hardcore;
+ begin
+  keymode:=0;
+  toolus:=0;
+  toolind:=0;
+
+  repeat
+  updateKeys;
+  if clickedKey(KEY_MENU_SELECT) then
+   begin
+    deleteworld('/'+sd+'/cavecraft/saves/'+sav_fl+'/');
+    menu;
+    exit;
+   end;
+  draw;
+  drawfonttext('You died!',getwidth/2-32,getheight/2-16);
+
+  drw_btn('Delete world',0,0,0,1);
+
+   drawVideo;
+   delay(1);
+  until false;
+
+ end;
+
+procedure plr_is_dead;
+ var
+  m_cur:integer;
+  x, y:integer;
+ begin
+  x:=player.getX;
+  y:=player.getY;
+  keymode:=0;
+  toolus:=0;
+  toolind:=0;
+  repeat
+   updateKeys;
+   if clickedKey(KEY_MENU_UP) then
+    begin
+     m_cur:=m_cur-1;
+     if m_cur<0 then m_cur:=1;
+    end;
+   if clickedKey(KEY_MENU_DOWN) then
+    begin
+     m_cur:=m_cur+1;
+     if m_cur>1 then m_cur:=0;
+    end;
+   if clickedKey(KEY_MENU_SELECT) then
+    begin
+     if m_cur=0 then
+      begin
+      if pl_world=0 then
+       begin
+        if last_sleep_x=0 then
+         begin
+          x:=get_spawn_x*16+4;
+          y:=get_spawn_y*16;
+         end; else
+          begin
+           x:=last_sleep_x*16+4;
+           y:=last_sleep_y*16;
+          end;
+       end; else
+        if pl_world=1 then
+         begin
+          go_to_world;
+          if last_sleep_x=0 then
+           begin
+            x:=get_spawn_x*16+4;
+            y:=get_spawn_y*16;
+           end; else
+            begin
+             x:=last_sleep_x*16+4;
+             y:=last_sleep_y*16;
+            end;
+         end;
+       posi:=0;
+       curx:=0;
+       cury:=0;
+       vely:=0;
+       jmp:=false;
+       hp:=20;
+       hunger:=20;
+       exit;
+      end;
+     else
+     if m_cur=1 then begin menu; exit; end;
+    end;
+
+   draw;
+
+   drawfonttext('You died!',getwidth/2-32,getheight/2-16);
+
+   drw_btn('Respawn',0,m_cur,0,1);
+   drw_btn('Main menu',1,m_cur,0,1);
+
+   drawVideo;
+   delay(1);
+  until false;
+ end;
+
+procedure fast_menu;
+ var
+  m_cur,i:integer;
+ begin
+  repeat
+   updateKeys;
+   if clickedKey(KEY_MENU_UP) then begin m_cur:=m_cur-1; if m_cur<0 then m_cur:=3; end;
+   if clickedKey(KEY_MENU_DOWN) then begin m_cur:=m_cur+1; if m_cur>3 then m_cur:=0; end;
+   if clickedKey(KEY_MENU_SELECT) then
+    begin
+     if m_cur=0 then
+      begin
+       exit;
+      end; else
+     if m_cur=1 then
+      begin
+       savegame('/'+sd+'/cavecraft/saves/'+sav_fl+'/');
+       exit;
+      end; else
+     if m_cur=2 then
+      begin
+       menu_sett;
+      end; else
+     if m_cur=3 then
+      begin
+       //clear_gui(keymode);
+       menu;
+       exit;
+      end;
+    end;
+   draw;
+   drawfonttext('Game menu',getwidth/2-36,getheight/2-20);
+   drw_btn('Back to Game',0,m_cur,0,1);
+   drw_btn('Save Game',1,m_cur,0,1);
+   drw_btn('Options',2,m_cur,0,1);
+   drw_btn('Quit to Title',3,m_cur,0,1);
+
+   drawVideo;
+   delay(1);
+  until false;
+ end;
+
+procedure keyFastInv;
+ begin
+  if clickedKey(KEY_FASTINV_NEXT) then
+   begin
+    invslot:=invslot-1;
+    if invslot<0 then
+    invslot:=8;
+   end;
+
+  if clickedKey(KEY_FASTINV_PREV) then
+   begin
+    invslot:=invslot+1;
+    if invslot>8 then
+     invslot:=0;
+   end;
+ end;
+
+procedure keyConsole;
+ begin
+  if clickedKey(KEY_CHAT) then
+   SetTimer(1000,T_CONSOLE);
+
+  if pressedKey(KEY_CHAT) then
+   begin
+    if GetTimer(T_CONSOLE)=TIMER_OK then
+     begin
+      call_console;
+      ResetTimer(T_CONSOLE);
+     end;
+   end;
+  else
+   begin
+    if GetTimer(T_CONSOLE)>TIMER_OK then
+     begin
+      deb:= not deb;
+      ResetTimer(T_CONSOLE);
+     end;
+   end;
+ end;
+
+procedure keyInventory;
+ begin
+  if clickedKey(KEY_PLR_OPENINV) then
+   if gamemode<>1 then
+    OpenPlayerInventory;
+   else
+    OpenCreativeWindow;
+ end;
+
+procedure keyhandler;
+ begin
+  updateKeys;
+
+  if WindowKeyHanler then
+   begin
+    if keymode=0 then
+     begin
+      keyInventory;
+      keyFastInv;
+      keyConsole;
+
+      if clickedKey(KEY_PLR_EDITMODE) then
+       begin
+        keymode:=1;
+        curx:=player.getX div 16;
+        cury:=player.getY div 16;
+       end;
+
+      if clickedKey(KEY_PLR_USE) then
+       rt_usemob;
+
+      if clickedKey(KEY_MENU) then
+       fast_menu;
+
+      if pressedKey(KEY_PLR_ATTACK) then
+       begin
+        rt_usetools;
+        playAnim(ANIM_HAND);
+       end;
+      else
+       begin
+        resetToolProgerss;
+        cancelAnim(ANIM_HAND);
+       end;
+
+      if pressedKey(KEY_PLR_UP) then
+       player.gotoUP;
+      if pressedKey(KEY_PLR_DOWN) then
+       player.gotoDOWN;
+      if pressedKey(KEY_PLR_LEFT) then
+       player.gotoLEFT;
+      if pressedKey(KEY_PLR_RIGHT) then
+       player.gotoRIGHT;
+     end;
+    else
+    if keymode=1 then
+     begin
+      keyInventory;
+      keyFastInv;
+      keyConsole;
+
+      if clickedKey(KEY_PLR_UP) then
+       begin
+        cury:=cury-1;
+        if cury<0 then
+         cury:=0;
+       end;
+      if clickedKey(KEY_PLR_DOWN) then
+       begin
+        cury:=cury+1;
+        if cury>127 then
+         cury:=127;
+       end;
+      if clickedKey(KEY_PLR_LEFT) then
+       begin
+        curx:=curx-1;
+        if curx<0 then
+         curx:=0;
+       end;
+      if clickedKey(KEY_PLR_RIGHT) then
+       begin
+        curx:=curx+1;
+        if curx>255 then
+         curx:=255;
+       end;
+
+      if clickedKey(KEY_PLR_EDITMODE) then
+       keymode:=0;
+
+      if clickedKey(KEY_PLR_USE) then
+       actionUse(invslot, curx, cury);
+
+      if pressedKey(KEY_PLR_ATTACK) then
+       begin
+        usetools(invslot, curx, cury);
+        playAnim(ANIM_HAND);
+       end;
+      else
+       begin
+        resetToolProgerss;
+        cancelAnim(ANIM_HAND);
+       end;
+
+      if clickedKey(KEY_MENU) then
+       fast_menu;
+     end;
+
+   end;
+
+ end;
+
+procedure phyhandler;
+ var
+  i:integer;
+ begin
+  player.calcPhysics;
+  drop.calcPhy;
+ end;
+
+procedure light_fillrect(l,x,y,r:integer);
+ var
+  ix,iy,ym,yp,xm,xp:integer;
+ begin
+  ym:=y-r;
+  yp:=y+r;
+  xm:=x-r;
+  xp:=x+r;
+  //Клампим границы, чтобы не ходить за край карты
+  if ym<0 then ym:=0;
+  if yp>127 then yp:=127;
+  if xm<0 then xm:=0;
+  if xp>255 then xp:=255;
+  for ix:=xm to xp do
+  for iy:=ym to yp do
+   setmaplight(getmaplight(ix,iy)+l,ix,iy);
+ end;
+
+procedure light_rect(l,x,y,r:integer);
+ var
+  ix,iy,ym,yp,xm,xp:integer;
+ begin
+  ym:=y-r;
+  yp:=y+r;
+  xm:=x-r;
+  xp:=x+r;
+  //Клампим границы, чтобы не ходить за край карты
+  if ym<0 then ym:=0;
+  if yp>127 then yp:=127;
+  if xm<0 then xm:=0;
+  if xp>255 then xp:=255;
+  for ix:=xm to xp do
+   begin
+    setmaplight(getmaplight(ix,ym)+l,ix,ym);
+    setmaplight(getmaplight(ix,yp)+l,ix,yp);
+   end;
+  for iy:=ym+1 to yp-1 do
+   begin
+    setmaplight(getmaplight(xm,iy)+l,xm,iy);
+    setmaplight(getmaplight(xp,iy)+l,xp,iy);
+   end;
+ end;
+
+procedure calc_light(m,x,y:integer);
+ var
+  ix,iy,l,ss,sf:integer;
+ begin
+  if light_type=1 then light_fillrect(m,x,y,m/2); else
+  for l:=m downto 1 do
+   begin
+    if ss mod 2=0 then light_rect(l,x,y,ss/2);
+    ss:=ss+1;
+   end;
+ end;
+
+procedure calc_sun(ix,m:integer);
+ var
+  iy,ss:integer;
+ begin
+  ss:=m;
+  for iy:=0 to 127 do
+   begin
+    setmaplight(ss,ix,iy);
+    if ss=0 then break;
+    ss:=ss-getBlockTr(getmap(ix,iy));
+    if ss<0 then ss:=0;
+   end;
+  for iy:=iy+1 to 127 do
+   begin
+    setmaplight(0,ix,iy);
+   end;
+ end;
+
+procedure kill_plr;
+ var
+  i:integer;
+ begin
+ hp:=0;
+ for i:=0 to INV_SIZE do
+  begin
+   if inv.isNull(i)=false then
+    player.dropItem(inv.getItem(i), inv.getSum(i));
+   inv.setItem(0, i);
+   inv.setSum(0, i);
+  end;
+  if gamemode<2 then plr_is_dead; else plr_is_dead_hardcore;
+ end;
+
+procedure hunger_and_air;
+ var
+  x, y:integer;
+ begin
+  x:=player.getX;
+  y:=player.getY;
+   if gamemode<>1 then
+    begin
+     if getrelativetimems-hung_time>=90000/(gamemode+1) then
+      begin
+       hung_time:=getrelativetimems;
+       hunger:=hunger-1;
+      end;
+     if getrelativetimems-hp_time>=5000*(gamemode+1) then
+      begin
+       if hunger>16 then
+        begin
+         hp_time:=getrelativetimems;
+         hp:=hp+1;
+         if hp>20 then hp:=20;
+        end; else
+       if hunger<1 then
+        begin
+         hp_time:=getrelativetimems;
+         hp:=hp-1;
+         if hp<1 then if gamemode<2 then hp:=1;
+        end;
+      end;
+
+     if getmap((x+4)/16,y/16)=50 then
+      begin
+       if getrelativetimems-air_time>=500 then
+        begin
+         air:=air-1;
+         air_time:=getrelativetimems;
+         if air<1 then
+          begin
+           hp_time:=getrelativetimems;
+           hp:=hp-2;
+          end;
+        end;
+      end; else
+       air:=21;
+    end;
+ end;
+
+procedure game;
+ var
+  ix,iy,minx,maxx,miny,maxy,fps_t,tim, x, y:integer;
+ begin
+  x:=player.getX;
+  y:=player.getY;
+
+  hunger_and_air;
+
+  if hunger<0 then hunger:=0;
+  if air<0 then air:=0;
+
+  fps_t:=fps;
+  if fps_t<1 then fps_t:=1;
+
+    if bl_ani5_d then
+     if bl_ani5_v=false then
+      begin
+       bl_ani5:=bl_ani5+1;
+       if bl_ani5>4 then
+        begin
+         bl_ani5:=4;
+         bl_ani5_v:=not bl_ani5_v;
+        end;
+      end;
+     else
+      begin
+       bl_ani5:=bl_ani5-1;
+       if bl_ani5<0 then
+        begin
+         bl_ani5:=0;
+         bl_ani5_v:=not bl_ani5_v;
+        end;
+      end;
+     bl_ani5_d:=not bl_ani5_d;
+
+  drop.reflux;
+  player.getDrop;
+
+  game_time:=game_time+(600000 div (fps_t*1000));
+
+  if (game_time>600000) or (game_time<0) then
+   begin
+    game_time:=0;
+    moon_phase:=moon_phase+1;
+    if moon_phase>7 then moon_phase:=0;
+    load_moon('/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/',moon_phase);
+   end;
+
+  tim:=10000*getimagewidth(sky)/600000*game_time/10000;
+  global_light:=effects.get(sky,tim,1,1) {and $F};
+
+  if clock_stage<>game_time div 75000 then begin clock_stage:=clock_stage+1; if clock_stage>7 then clock_stage:=0; end;
+
+  if x<0 then x:=0;
+  if x+8>4094 then x:=4086;
+  if getBlockColl(getmap(x div 16, y div 16))>0 then hp:=hp-1;
+  if random(4096)=random(4096) then begin osadki:=not osadki; end;
+  osadki_ani:=osadki_ani+1;
+  if osadki_ani>7 then osadki_ani:=0;
+  //Плавная прокрутка осадков вниз
+  osadki_scr:=osadki_scr+2;
+  if osadki_scr>15 then osadki_scr:=0;
+
+  //Спавн снежинок-частиц над зимним биомом (не более 50, чтобы не занимать весь пул)
+  if (osadki=true) and ifosad then
+   begin
+    tim:=camx+random(getWidth);
+    ix:=0;
+    for iy:=0 to max_particles do
+     if get_particle_type(iy)=8 then ix:=ix+1;
+    if (ix<50) and (getBiomMap(tim div 16)=2) then
+     create_particle(8,tim,camy-random(32));
+   end;
+
+  if random(20)=random(20) then create_particle(6,x,y);
+
+  if gamemode=1 then begin hp:=666; hunger:=666; end;
+
+  if inv.getItem(invslot)=186 then
+   ifminimap:=true;
+  else
+   ifminimap:=false;
+
+  if s_spawn_mob then if random(4096)=1547 then megaspawn;
+
+  if ai_upd then update_ai;
+
+  if particle_upd then update_particle;
+
+  light_tick:=light_tick+1;
+  if light_type=0 then
+   begin
+    minx:=camx/16-8;
+    maxx:=(camx+getWidth)/16+16;
+    miny:=camy/16-8;
+    maxy:=(camy+getHeight)/16+16;
+    if minx<0 then minx:=0;
+    if maxx>255 then maxx:=255;
+    if miny<0 then miny:=0;
+    if maxy>127 then maxy:=127;
+    for ix:=minx to maxx do
+    for iy:=miny to maxy do
+     setmaplight(15,ix,iy);
+   end
+  else
+  //Оптимизация: пересчёт света раз в 2 кадра
+  if (light_tick and 1)=0 then
+   begin
+    minx:=camx/16-1;
+    maxx:=(camx+getWidth)/16+1;
+    if minx<0 then minx:=0;
+    if maxx>255 then maxx:=255;
+    for ix:=minx to maxx do calc_sun(ix,global_light);
+
+    minx:=camx/16-8;
+    maxx:=(camx+getWidth)/16+16;
+    miny:=camy/16-8;
+    maxy:=(camy+getHeight)/16+16;
+    if minx<0 then minx:=0;
+    if maxx>255 then maxx:=255;
+    if miny<0 then miny:=0;
+    if maxy>127 then maxy:=127;
+    for ix:=minx to maxx do
+    for iy:=miny to maxy do
+     if getBlockLi(getmap(ix,iy))>0 then calc_light(getBlockLi(getmap(ix,iy)),ix,iy);
+   end;
+
+  minx:=(camx/16)-((getwidth/2)/16);
+  miny:=(camy/16)-((getheight/2)/16);
+  maxx:=(camx+(getWidth+getWidth/2))/16;
+  maxy:=(camy+(getHeight+getHeight/2))/16;
+  if minx<0 then minx:=0;
+  if miny<0 then miny:=0;
+  if maxx>255 then maxx:=255;
+  if maxy>127 then maxy:=127;
+  if updx<minx then updx:=minx;
+  if updy<miny then updy:=miny;
+  if updx>maxx then updx:=minx;
+  if updy>maxy then updy:=miny;
+
+  if bl_upd>0 then
+   begin
+    for ix:=0 to (((2*getWidth/16)*(2*getHeight/16))-1) div ((fps_t*bl_upd)) do
+     begin
+      updateBlock(updx, updy);
+      updx:=updx+1;
+      if updx>maxx then
+       begin
+        updx:=minx;
+        updy:=updy+1;
+        if updy>maxy then updy:=miny;
+       end;
+     end;
+   end;
+
+    if coll_bl(110)=true then
+     begin
+      if getrelativetimems-portal_time>5000 then
+       begin
+        if pl_world=0 then begin go_to_nether; portal_time:=getrelativetimems; end; else
+        if pl_world=1 then begin go_to_world; portal_time:=getrelativetimems; end;
+       end;
+     end;
+
+  if coll_bl(51)=true then hp:=hp-1;
+
+  if coll_bl(59)=true then
+   begin
+    if vely<0 then vely:=-1;
+     else
+    if vely>0 then vely:=1;
+   end;
+
+  if gamemode<>1 then
+   begin
+    if hp>20 then hp:=20;
+    if hunger>20 then hunger:=20;
+   end;
+
+  if y>2048 then kill_plr;
+  if (hp<1) and (gamemode<>1) then kill_plr;
+  if fish=true then fishing;
+
+  if (fish=true) and (inv.getItem(invslot)<>152) then fish:=false;
+
+  //if (keymode>3) and (cury<(y div 16)-4) then begin clear_gui(keymode); keymode:=0; curx:=x div 16; cury:=y div 16; end;
+
+  if gamemode<>1 then
+   begin
+    if cury<(y div 16)-4 then cury:=(y div 16)-4;
+    if cury>(y div 16)+5 then cury:=(y div 16)+5;
+    if curx<(x div 16)-4 then curx:=(x div 16)-4;
+    if curx>(x div 16)+4 then curx:=(x div 16)+4;
+   end;
+
+  UpdateFurnaces;
+ end;
+
+procedure qt_start;
+ var
+  i:integer;
+ begin
+  drawgui:=true;
+  LoadDrawFont('/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/');
+  drawdeadlogo;
+  start_uu;
+  if load_key_tex=1 then init_touch;
+  for i:=0 to 4 do
+   begin
+    msg[i]:='';
+    msg_time[i]:=getrelativetimems;
+   end;
+  InitMap(MAP_W, MAP_H);
+  menu;
+ end;
+
+begin
+ qt_start;
+ hung_time:=getrelativetimems;
+ hp_time:=getrelativetimems;
+ air_time:=getrelativetimems;
+ portal_time:=getrelativetimems;
+ repeat
+  proc_fps;
+  keyhandler;
+  phyhandler;
+  game;
+  draw;
+  drawfonttext(version,getWidth-(length(version)*8),getHeight-8);
+  if getrelativetimems-msg_time[4]>500 then begin free_ram:=memory.get_freememory; if free_ram<0 then free_ram:=-free_ram; msg_time[4]:=getrelativetimems; end;
+  if deb=true then
+   begin
+    //drawfonttext('X:'+(x div 16-128),0,0);
+    //drawfonttext('Y:'+integertostring(127-(y div 16)),0,8);
+    drawfonttext('CURX:'+(curx-128),0,16);
+    drawfonttext('CURY:'+cury,0,24);
+    drawfonttext('UPDX:'+updx,0,32);
+    drawfonttext('UPDY:'+updy,0,40);
+    drawfonttext('FPS:'+fps,0,56);
+    drawfonttext('Free RAM:'+free_ram/1024+' KB',0,64);
+    drawfonttext('Total RAM:'+memory.get_totalmemory div 1024+' KB',0,72);
+    drawfonttext('SEED:'+seed,0,88);
+    drawfonttext('Game time:'+game_time,0,96);
+   end;
+
+  drawVideo;
+  maxfps;
+
+ until false;
+end.

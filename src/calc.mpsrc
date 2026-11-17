@@ -1,0 +1,74 @@
+unit calc;
+
+interface
+ function infixToPostfix(input:string):string;
+
+implementation
+ const
+  STACK_SIZE=15;
+ var
+  stack: array [0..STACK_SIZE] of string;
+  stack_prt:integer;
+
+ procedure stackPush(str:string);
+  begin
+   stack[stack_prt]:=str;
+   stack_prt:=stack_prt+1;
+  end;
+
+ function stackPop:string;
+  begin
+   stack_prt:=stack_prt-1;
+   stackPop:=stack[stack_prt+1];
+  end;
+
+ procedure resetStack;
+  var
+   i:integer;
+  begin
+   for i:=0 to STACK_SIZE do
+    stack[i]:='';
+   stack_prt:=0;
+  end;
+
+ function findOpChar(str:string):integer;
+  var
+   i:integer;
+   ch:char;
+  begin
+   for i:=0 to length(str)-1 do
+    begin
+     ch:=getChar(str, i);
+     if (ch='-') or (ch='+') or (ch='*') or (ch='/') then
+      begin
+       findOpChar:=i;
+       exit;
+      end;
+    end;
+  end;
+
+ function infixToPostfix(input:string):string;
+  var
+   output:string;
+   ch:char;
+   i:integer;
+  begin
+   while input<>'' do
+    begin
+     i:=findOpChar(input);
+     output:=output+' '+copy(input, 0, i-1);
+     input:=copy(input, i, length(input));
+
+     ch:=getChar(input, 0);
+
+     stackPush(ch);
+
+     input:=copy(input, i+1, length(input)-1);
+    end;
+
+   for i:=0 to stack_prt-1 do
+    output:=output+stackPop;
+   infixToPostfix:=output;
+  end;
+
+end.

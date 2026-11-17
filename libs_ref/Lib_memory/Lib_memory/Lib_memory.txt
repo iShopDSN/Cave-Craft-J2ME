@@ -1,0 +1,4 @@
+Функции:
+procedure run_gc; - вызов сборщика мусора
+function get_totalmemory:integer; - получить размер памяти
+function get_freememory:integer; - получить размер свободной памяти

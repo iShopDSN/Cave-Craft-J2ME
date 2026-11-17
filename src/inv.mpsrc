@@ -1,0 +1,148 @@
+unit inv;
+
+interface
+ const
+  INV_SIZE=35;
+
+
+ function getItem(i:integer):integer;
+ function getSum(i:integer):integer;
+ procedure setItem(val, i:integer);
+ procedure setSum(val, i:integer);
+ function isNull(i:integer):boolean;
+ procedure fixNull(i:integer);
+
+ function giveItem(ityp, isum:integer):integer;
+
+ procedure resetData;
+ procedure saveData;
+ procedure loadData;
+
+implementation
+ uses items_store, vars, jsr75i, items, func;
+ var
+  inv_item: array [0..INV_SIZE] of integer;
+  inv_sum: array [0..INV_SIZE] of integer;
+
+ function getItem(i:integer):integer;
+  begin
+   getItem:=inv_item[i];
+  end;
+
+ function getSum(i:integer):integer;
+  begin
+   getSum:=inv_sum[i];
+  end;
+
+ procedure setItem(val, i:integer);
+  begin
+   inv_item[i]:=val;
+  end;
+
+ procedure setSum(val, i:integer);
+  begin
+   inv_sum[i]:=val;
+  end;
+
+ function isNull(i:integer):boolean;
+  begin
+   if (getItem(i)<1) or (getSum(i)<1) then
+    isNull:=true;
+  end;
+
+ procedure fixNull(i:integer);
+  begin
+   if isNull(i) then
+    begin
+     setItem(0, i);
+     setSum(0, i);
+    end;
+  end;
+
+  //Добавить предмет в инвентарь, возващает количество не полученых предметов.
+function giveItem(ityp, isum:integer):integer;
+ var
+  i, item, sum:integer;
+ begin
+  //Ищем такой же предмет только если он имеет возможность делиться
+  if getItemDiv(ityp) then
+  for i:=0 to INV_SIZE do
+   begin
+    item:=getItem(i);
+    sum:=getSum(i);
+
+    if (item=ityp) and (isNull(i)=false) then
+     if isum<getItemMax(ityp) then
+      begin
+       sum:=sum+isum;
+       isum:=0;
+
+       if sum>getItemMax(ityp) then
+        begin
+         isum:=sum-getItemMax(ityp);
+         sum:=sum-isum;
+        end;
+
+       setSum(sum, i);
+
+       if isum<1 then
+        exit;
+      end;
+   end;
+
+  for i:=0 to INV_SIZE do
+   if isNull(i) then
+    begin
+     sum:=isum;
+     isum:=0;
+
+     if sum>getItemMax(ityp) then
+      begin
+       isum:=sum-getItemMax(ityp);
+       sum:=sum-isum;
+      end;
+
+      setItem(ityp, i);
+      setSum(sum, i);
+
+      if isum<1 then
+       exit;
+    end;
+
+  giveItem:=isum;
+ end;
+
+ procedure resetData;
+  var
+   i:integer;
+  begin
+   for i:=0 to INV_SIZE do
+    begin
+     setItem(0, i);
+     setSum(0, i);
+    end;
+  end;
+
+ procedure saveData;
+  var
+   i:integer;
+  begin
+   for i:=0 to INV_SIZE do
+    begin
+     write_byte(getItem(i));
+     WriteInt(getSum(i));
+    end;
+  end;
+
+ procedure loadData;
+  var
+   i:integer;
+  begin
+   for i:=0 to INV_SIZE do
+    begin
+     setItem(read_byte, i);
+     setSum(ReadInt, i);
+    end;
+  end;
+
+end.

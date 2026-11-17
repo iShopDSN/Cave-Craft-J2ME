@@ -1,0 +1,63 @@
+unit utils;
+
+interface
+const
+ MaxTimers=2;
+ TIMER_ERROR=-1;
+ TIMER_OK=0;
+
+ T_CONSOLE=0;//Timer for call console
+ T_KEY_DIVITEM=1;
+ T_KEY_DROPITEM=2;
+
+procedure SetTimer(t,i:integer);
+function GetTimer(i:integer):integer;
+procedure ResetTimer(i:integer);
+procedure ResetAllTimers;
+
+implementation
+ var
+  Timer_value:array [0..MaxTimers] of integer;
+  Timer_time:array [0..MaxTimers] of integer;
+
+procedure SetTimer(t,i:integer);
+ begin
+  Timer_value[i]:=t;
+  Timer_time[i]:=getrelativetimems;
+ end;
+
+function GetTimer(i:integer):integer;
+ var
+  dt:integer;
+ begin
+  if Timer_value[i]>-1 then
+   begin
+    dt:=Timer_time[i]-getrelativetimems;
+    Timer_value[i]:=Timer_value[i]+dt;
+    if Timer_value[i]<0 then Timer_value[i]:=0;
+    Timer_time[i]:=getrelativetimems;
+    GetTimer:=Timer_value[i];
+   end;
+  else GetTimer:=-1;
+ end;
+
+procedure ResetTimer(i:integer);
+ begin
+  Timer_value[i]:=-1;
+  Timer_time[i]:=-1;
+ end;
+
+procedure ResetAllTimers;
+ var
+  i:integer;
+ begin
+  for i:=0 to MaxTimers do
+   begin
+    Timer_value[i]:=-1;
+    Timer_time[i]:=-1;
+   end;
+ end;
+
+initialization
+ ResetAllTimers;
+end.

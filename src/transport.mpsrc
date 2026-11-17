@@ -1,0 +1,60 @@
+unit transport;
+
+interface
+ const
+  max_transport=15;
+  max_t_images=0;
+
+ type Ttrans=record
+  t_type,t_x,t_y,t_w,t_h:integer;
+ end;
+
+ var
+  transport:array [0..max_transport] of Ttrans;
+  transport_im:array [0..max_t_images] of image;
+
+ function create_transport(typ,x,y,w,h:integer):boolean;
+ procedure destroy_transport(id:integer);
+ procedure draw_transport;
+
+implementation
+ uses vars;
+
+ function create_transport(typ,x,y,w,h:integer):boolean;
+  var
+   i:integer;
+  begin
+   for i:=0 to max_transport do
+    begin
+     if transport[i].t_type=0 then
+      begin
+       transport[i].t_type:=typ;
+       transport[i].t_x:=x;
+       transport[i].t_y:=y;
+       transport[i].t_w:=w;
+       transport[i].t_h:=h;
+       create_transport:=true;
+       break;
+      end;
+    end;
+  end;
+
+ procedure destroy_transport(id:integer);
+  begin
+   if transport[id].t_type=1 then createdrop(121,1,transport[id].t_x+12,transport[id].t_y);
+   transport[id].t_type:=0;
+  end;
+
+ procedure draw_transport;
+  var
+   i:integer;
+  begin
+   for i:=0 to max_transport do
+    begin
+     if transport[i].t_type=1 then drawimage(transport_im[0],transport[i].t_x-camx,transport[i].t_y-camy);
+    end;
+  end;
+
+initialization
+
+end.

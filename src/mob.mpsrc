@@ -1,0 +1,9 @@
+//Устаревший модуль. Полностью заменён на mobs.mpsrc,
+//восстановленный по байткоду прекомпилированного mobs.class.
+unit mob;
+
+interface
+
+implementation
+
+end.

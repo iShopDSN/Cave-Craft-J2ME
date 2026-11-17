@@ -1,0 +1,99 @@
+//Этот модуль можно свободно распространять, изменять и использовать в своих проектах без указания автора оригинала.
+//Не стоит доверять поиску, так как автор допускал ошибки в словах :)
+unit items;
+
+interface
+ const
+  ITEM_TYPE_BLOCK=0;
+  ITEM_TYPE_TOOL=1;
+
+  ITEM_FLAG_IND1=1;
+  ITEM_FLAG_IND2=2;
+  ITEM_FLAG_DIV=4;
+  ITEM_FLAG_TEX=8;
+ var
+  clock_stage:integer;
+  compas:image;
+  clock:array[0..7] of image;
+
+ function getBlockTrans(id:integer;):boolean;
+ function getBlockFore(id:integer;):boolean;
+ function getBlockSet(id:integer;):boolean;
+
+ function getItemIndNum(id:integer):boolean;
+ function getItemIndLine(id:integer):boolean;
+ function getItemDiv(id:integer):boolean;
+ function getItemTexType(id:integer):integer;
+
+ procedure setMaxItemList(i:integer);
+ procedure setItemList(item, i:integer);
+ function getItemList(i:integer):integer;
+
+implementation
+ uses items_store;
+ const
+  BLOCK_FLAG_Trans=1;
+  BLOCK_FLAG_FORE=2;
+  BLOCK_FLAG_SET=4;
+
+ var
+  itemListSize:integer;
+  itemList: array [0..0] of integer;
+
+ function getBlockTrans(id:integer;):boolean;
+  begin
+   getBlockTrans:=(getBlockFlags(id) and BLOCK_FLAG_Trans)>0;
+  end;
+
+ function getBlockFore(id:integer;):boolean;
+  begin
+   getBlockFore:=(getBlockFlags(id) and BLOCK_FLAG_FORE)>0;
+  end;
+
+ function getBlockSet(id:integer;):boolean;
+  begin
+   getBlockSet:=(getBlockFlags(id) and BLOCK_FLAG_SET)>0;
+  end;
+
+ function getItemIndNum(id:integer):boolean;
+  begin
+   getItemIndNum:=(getItemFlags(id) and ITEM_FLAG_IND1)>0;
+  end;
+
+ function getItemIndLine(id:integer):boolean;
+  begin
+   getItemIndLine:=(getItemFlags(id) and ITEM_FLAG_IND2)>0;
+  end;
+
+ function getItemDiv(id:integer):boolean;
+  begin
+   getItemDiv:=(getItemFlags(id) and ITEM_FLAG_DIV)>0;
+  end;
+
+ function getItemTexType(id:integer):integer;
+  begin
+   getItemTexType:=(getItemFlags(id) and ITEM_FLAG_TEX)>>3;
+  end;
+
+ procedure setMaxItemList(i:integer);
+  begin
+   itemListSize:=i;
+   i:=i+1;
+   bytecode
+    iload 0;
+    newarray 10;
+    putstatic field 'items', 'itemlist', '[I';
+   end;
+  end;
+
+ procedure setItemList(i, item:integer);
+  begin
+   itemList[i]:=item;
+  end;
+
+ function getItemList(i:integer):integer;
+  begin
+   if (i>=0) and (i<=itemListSize) then
+    getItemList:=itemList[i];
+  end;
+end.

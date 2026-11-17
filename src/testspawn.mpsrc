@@ -1,0 +1,179 @@
+unit testspawn;
+
+interface
+ procedure megaspawn;
+ procedure netherspawn;
+implementation
+ uses maps,mobs,vars,items, items_store;
+
+function test_3x3(x,y:integer):boolean;
+ var
+  ix,iy:integer;
+ begin
+  for ix:=x-1 to x+1 do
+  for iy:=y-1 to y+1 do
+   if getBlockColl(getmap(ix,iy))=1 then begin test_3x3:=true; exit; end;
+ end;
+
+procedure netherspawn;
+ var
+  ix,iy,lol,r,ghg:integer;
+  cc:boolean;
+ begin
+  Debug('MEGASPAWN IN NETHER!');
+  for lol:=0 to 6 do
+   begin
+    cc:=false;
+    ix:=random(255);
+      for iy:=0 to 126 do
+       if (getmap(ix,iy)=109) and (getmap(ix,iy-1)=0) and (getmap(ix,iy-2)=0) then
+        begin
+         r:=random(1);
+         if r=0 then
+          begin
+           debug('Pigman');
+           create_mob(10,ix*16,(iy-2)*16);
+           break;
+          end; else
+       if getBlockColl(getmap(ix,iy))=1 then
+        begin
+         r:=random(3);
+        end;
+
+   for r:=0 to random(50) do
+    begin
+     ix:=random(255);
+     iy:=random(64)+64;
+     r:=random(3);
+     if getmap(ix,iy)=0 then
+      begin
+       cc:=true;
+       break;
+      end;
+    end;
+
+   end;
+ end;
+end;
+
+procedure megaspawn;
+ var
+  ix,iy,lol,r,ghg:integer;
+  cc:boolean;
+ begin
+ if pl_world=0 then begin
+  Debug('MEGASPAWN!');
+  for lol:=0 to 6 do
+   begin
+    cc:=false;
+    ix:=random(255);
+    if game_time<=300000 then
+     begin
+      for iy:=0 to 126 do
+       if (getmap(ix,iy)=2) or (getmap(ix,iy)=48) then
+        begin
+         if (getBlockColl(getmap(ix,iy-1))=0) and (getBlockColl(getmap(ix+1,iy-1))=0) and (getBlockColl(getmap(ix,iy-2))=0) and (getBlockColl(getmap(ix+1,iy-2))=0) then
+          begin
+           r:=random(4);
+           if r=0 then
+            begin
+             debug('Pig');
+             create_mob(2,ix*16,(iy-2)*16);
+             break;
+            end; else
+           if r=1 then
+            begin
+             debug('Sheep');
+             create_mob(3,ix*16,(iy-2)*16);
+             break;
+            end; else
+           if r=2 then
+             begin
+             debug('Chicken');
+             create_mob(4,ix*16,(iy-2)*16);
+             break;
+            end; else
+           if r=3 then
+            begin
+             debug('Cow');
+             create_mob(6,ix*16,(iy-2)*16);
+             break;
+            end;
+          end;
+        end; else
+       if (getmap(ix,iy)=74) and (getBlockColl(getmap(ix,iy-1))=0) and (getBlockColl(getmap(ix+1,iy-1))=0) and (getBlockColl(getmap(ix,iy-2))=0) and (getBlockColl(getmap(ix+1,iy-2))=0) then
+        begin
+         r:=random(2);
+         if r=0 then
+          begin
+           debug('MushroomCow');
+           create_mob(7,ix*16,(iy-2)*16);
+           break;
+          end;
+        end; else
+       if getBlockColl(getmap(ix,iy))=1 then
+        begin
+         r:=random(3);
+        end;
+     end; else
+    if game_time>300000 then
+     begin
+      for iy:=0 to 127 do
+       if (getBlockColl(getmap(ix,iy))=1) and (getBlockColl(getmap(ix,iy-1))=0) and (getBlockColl(getmap(ix,iy-2))=0) then
+        begin
+         r:=random(4);
+         if r=0 then
+          begin
+           debug('Zombie');
+           create_mob(1,ix*16,(iy-2)*16);
+           break;
+          end; else
+         if r=1 then
+          begin
+           debug('Creeper');
+           create_mob(5,ix*16,(iy-2)*16);
+           break;
+          end; else
+         if r=2 then
+          begin
+           debug('Spider');
+           create_mob(8,ix*16,(iy-2)*16);
+           break;
+          end;
+        end;
+        end;
+
+   for r:=0 to random(50) do
+    begin
+     ix:=random(255);
+     iy:=random(64)+64;
+     r:=random(3);
+     if getmap(ix,iy)=0 then
+      begin
+       cc:=true;
+       break;
+      end;
+    end;
+
+   {if cc then
+   for iy:=iy to 127 do
+    begin
+     if (r=0) and (getmap(ix,iy)<>0) and (getmap(ix,iy-1)=0) and (getmap(ix,iy-2)=0) then
+      begin
+       debug('Zombie(cave) x:'+ix+' y:'+iy);
+       create_mob(1,ix*16,(iy-2)*16);
+       break;
+      end; else
+     if (r=1) and (getmap(ix,iy)<>0) and (getmap(ix,iy-1)=0) and (getmap(ix,iy-2)=0) then
+      begin
+       debug('Creeper(cave) x:'+ix+' y:'+iy);
+       create_mob(5,ix*16,(iy-2)*16);
+       break;
+      end;
+    end;}
+
+   end;
+ end; else netherspawn;
+end;
+
+end.

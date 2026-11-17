@@ -1,0 +1,966 @@
+//При использовании этого модуля в своих проектах вы должны указывать авторов и предоставлять исходные коды.
+//Вы должны опубликовывать исходный код при изменении оригинала!
+//Авторы:
+//ZeroNoWing - Генератор высот.
+//DeaDDooMER - Генератор пещер и вообще всего остального.
+//Andrey59 - Генератор нижнего мира.
+
+unit worldgen;
+
+interface
+ procedure genworld;//Вызывается из главного модуля для начала генерации мира
+ procedure gennether;
+ procedure genflat;
+ procedure genportal(xx,yy:integer);
+ function get_up(Xi:integer):integer;
+
+ procedure genwood1(xx,yy:integer);//дуб
+ procedure genwood2(xx,yy:integer);//берёза
+ procedure genwood3(xx,yy:integer);//ель
+
+
+implementation
+uses maps,randoms,vars,items,func, player, chest, items_store;
+
+ function rnd_min:integer;
+  begin
+   rnd_min:=rnd(3)-1;
+  end;
+
+procedure create_bonus_chest(chx,chy:integer);
+ var
+   ix,l,id,time:integer;
+ begin
+  time:=getcurrenttime;
+  if ((getmonth(time)=0) and (getday(time)<3)) or ((getmonth(time)=11) and (getday(time)>29)) then
+   setmap(102,chx,chy);
+  else
+   setmap(28,chx,chy);
+  setmap(26,chx-1,chy);
+  setmap(26,chx+1,chy);
+  setmapinfo(31,chx,chy);
+  id:=chest.create(chx,chy);
+  debug('Bonus Chest');
+    for ix:=1 to rnd(10)+1 do
+     begin
+      l:=rnd(26);
+      if rnd(2)=rnd(2) then
+       begin
+        chest.setItem(127 ,l, id);
+        chest.setSum(rnd(6)+1, l, id);
+       end; else
+      if rnd(2)=rnd(2) then
+       begin
+        chest.setItem(9 ,l, id);
+        chest.setSum(rnd(4)+1, l, id);
+       end; else
+      if rnd(2)=rnd(2) then
+       begin
+        chest.setItem(4 ,l, id);
+        chest.setSum(rnd(4)+1, l, id);
+       end; else
+      if rnd(2)=rnd(2) then
+       begin
+        chest.setItem(131 ,l, id);
+        chest.setSum(60, l, id);
+       end; else
+      if rnd(2)=rnd(2) then
+       begin
+        chest.setItem(132 ,l, id);
+        chest.setSum(132, l, id);
+       end;
+      if rnd(2)=rnd(2) then
+       begin
+        chest.setItem(141 ,l, id);
+        chest.setSum(60, l, id);
+       end; else
+      if rnd(2)=rnd(2) then
+       begin
+        chest.setItem(142 ,l, id);
+        chest.setSum(132, l, id);
+       end;
+      if rnd(2)=rnd(2) then
+       begin
+        chest.setItem(147 ,l, id);
+        chest.setSum(60, l, id);
+       end; else
+      if rnd(2)=rnd(2) then
+       begin
+        chest.setItem(201 ,l, id);
+        chest.setSum(rnd(16), l, id);
+       end;
+     end;
+ end;
+
+ procedure genflat;
+  var
+   ix,iy:integer;
+  begin
+   for ix:=0 to 255 do
+    begin
+     setmap(2,ix,121);
+     setmap(1,ix,122);
+     setmap(1,ix,123);
+     setmap(3,ix,124);
+     setmap(3,ix,125);
+     setmap(3,ix,126);
+     setmap(6,ix,127);
+
+     setBackMap(121, ix);
+     setBiomMap(0, ix);
+    end;
+   if bon_chest then create_bonus_chest(get_spawn_x,get_spawn_y+1);
+   delay(200);
+  end;
+
+ procedure drawmap;
+  var
+   ix,iy:integer;
+  begin
+   for ix:=0 to 255 do
+   for iy:=0 to 127 do
+    begin
+     if getmap(ix,iy)<>0 then setcolor(0,0,0); else setcolor(255,255,255);
+     plot(ix,iy);
+    end;
+   repaint;
+   delay(1);
+  end;
+
+ procedure gencave(xx,yy:integer);
+  var
+   ix,iy:integer;
+   mask:array [0..63,0..63] of boolean;
+  begin
+   for ix:=0 to 63 do
+   for iy:=0 to 63 do
+    mask[ix,iy]:=true;
+   ix:=(63+1)/2-1;
+   iy:=(63+1)/2-1;
+   while (ix>=0) and (ix<=63) and (iy>=0) and (iy<=63) do
+    begin
+     ix:=ix+rnd_min;
+     iy:=iy+rnd_min;
+     if (ix>=0) and (ix<=63) and (iy>=0) and (iy<=63) then mask[ix,iy]:=false;
+    end;
+   for ix:=1 to 62 do
+   for iy:=1 to 62 do
+    begin
+     if mask[ix,iy]=true then
+      if mask[ix-1,iy]=false then
+       if mask[ix+1,iy]=false then
+       mask[ix,iy]:=false;
+    end;
+
+   for ix:=0 to 63 do
+   for iy:=0 to 63 do
+    begin
+     if mask[ix,iy]=false then setmap(0,xx+ix,yy+iy);
+    end;
+  end;
+
+ procedure genportal(xx,yy:integer);
+  begin
+   setmap(10,xx+1,yy);
+   setmap(10,xx+2,yy);
+   setmap(118,xx,yy+1);
+   setmap(118,xx+3,yy+1);
+   setmap(118,xx,yy+2);
+   setmap(118,xx+3,yy+2);
+   setmap(118,xx,yy+3);
+   setmap(118,xx+3,yy+3);
+   setmap(10,xx+1,yy+4);
+   setmap(10,xx+2,yy+4);
+   setmap(110,xx+1,yy+1);
+   setmap(110,xx+2,yy+1);
+   setmap(110,xx+1,yy+2);
+   setmap(110,xx+2,yy+2);
+   setmap(110,xx+1,yy+3);
+   setmap(110,xx+2,yy+3);
+  end;
+
+ procedure genportal_big(xx,yy:integer);
+  begin
+   setmap(10,xx,yy);
+   setmap(10,xx+1,yy);
+   setmap(10,xx+2,yy);
+   setmap(10,xx+3,yy);
+   setmap(118,xx,yy+1);
+   setmap(118,xx+3,yy+1);
+   setmap(118,xx,yy+2);
+   setmap(118,xx+3,yy+2);
+   setmap(118,xx,yy+3);
+   setmap(118,xx+3,yy+3);
+   setmap(10,xx,yy+4);
+   setmap(10,xx+1,yy+4);
+   setmap(10,xx+2,yy+4);
+   setmap(10,xx+3,yy+4);
+   setmap(110,xx+1,yy+1);
+   setmap(110,xx+2,yy+1);
+   setmap(110,xx+1,yy+2);
+   setmap(110,xx+2,yy+2);
+   setmap(110,xx+1,yy+3);
+   setmap(110,xx+2,yy+3);
+  end;
+
+ procedure surprisechest(x,y:integer);
+  var
+   ix,l,id:integer;
+  begin
+   id:=chest.create(x, y);
+     debug('Surprise!');
+     setmap(102,x,y);
+     for ix:=1 to rnd(8) do
+      begin
+       l:=rnd(26);
+       if rnd(22)=1 then
+        begin
+         chest.setItem(162 ,l, id);
+         chest.setSum(rnd(5), l, id);
+        end; else
+       if rnd(11)=1 then
+        begin
+         chest.setItem(165 ,l, id);
+         chest.setSum(rnd(6), l, id);
+        end; else
+       if rnd(11)=1 then
+        begin
+         chest.setItem(181 ,l, id);
+         chest.setSum(rnd(2), l, id);
+        end; else
+       if rnd(11)=1 then
+        begin
+         chest.setItem(182 ,l, id);
+         chest.setSum(rnd(2), l, id);
+        end; else
+       if rnd(11)=1 then
+        begin
+         chest.setItem(176 ,l, id);
+         chest.setSum(rnd(32), l, id);
+        end; else
+       if rnd(11)=1 then
+        begin
+         chest.setItem(183 ,l, id);
+         chest.setSum(rnd(10)+1, l, id);
+        end; else
+       if rnd(11)=1 then
+        begin
+         chest.setItem(186 ,l, id);
+         chest.setSum(1, l, id);
+        end;
+      end;
+  end;
+
+ procedure genwood1(xx,yy:integer);//дуб
+  begin
+   setmap(75,xx,yy);
+   setmap(75,xx,yy-1);
+   setmap(75,xx,yy-2);
+   setmap(21,xx,yy-3);
+   setmap(21,xx,yy-4);
+   setmap(21,xx,yy-5);
+   setmap(21,xx-1,yy-3);
+   setmap(21,xx-1,yy-4);
+   setmap(21,xx+1,yy-3);
+   setmap(21,xx+1,yy-4);
+  end;
+
+ procedure genwood2(xx,yy:integer);//берёза
+  begin
+   setmap(84,xx,yy);
+   setmap(84,xx,yy-1);
+   setmap(84,xx,yy-2);
+   setmap(112,xx,yy-3);
+   setmap(112,xx,yy-4);
+   setmap(112,xx,yy-5);
+   setmap(112,xx-1,yy-3);
+   setmap(112,xx-1,yy-4);
+   setmap(112,xx+1,yy-3);
+   setmap(112,xx+1,yy-4);
+  end;
+
+ procedure genwood3(xx,yy:integer);//ель
+  var
+   time:integer;
+  begin
+   setmap(87,xx,yy-5);
+   setmap(87,xx-1,yy-4); setmap(87,xx,yy-4); setmap(87,xx+1,yy-4);
+   setmap(86,xx,yy-3);
+   setmap(87,xx-1,yy-2); setmap(86,xx,yy-2); setmap(87,xx+1,yy-2);
+   setmap(87,xx-2,yy-1); setmap(87,xx-1,yy-1); setmap(86,xx,yy-1); setmap(87,xx+1,yy-1); setmap(87,xx+2,yy-1);
+   setmap(86,xx,yy);
+   time:=getcurrenttime;
+   if ((getmonth(time)=0) and (getday(time)<3)) or ((getmonth(time)=11) and (getday(time)>29)) then
+    begin
+     if rnd(3)=1 then surprisechest(xx-1,yy);
+     if rnd(3)=1 then surprisechest(xx+1,yy);
+    end;
+  end;
+
+ procedure genfungus1(xx,yy:integer);//красный гриб
+  begin
+   setmap(88,xx-1,yy-4); setmap(88,xx,yy-4); setmap(88,xx+1,yy-4);
+   setmap(88,xx-2,yy-3); setmap(88,xx-1,yy-3); setmap(88,xx,yy-3); setmap(88,xx+1,yy-3); setmap(88,xx+2,yy-3);
+   setmap(88,xx-2,yy-2); setmap(88,xx-1,yy-2); setmap(88,xx,yy-2); setmap(88,xx+1,yy-2); setmap(88,xx+2,yy-2);
+   setmap(89,xx,yy-1);
+   setmap(89,xx,yy);
+  end;
+
+ procedure genfungus2(xx,yy:integer);//коричневый гриб
+  begin
+   setmap(90,xx-2,yy-4); setmap(90,xx-1,yy-4); setmap(90,xx,yy-4); setmap(90,xx+1,yy-4); setmap(90,xx+2,yy-4);
+   setmap(91,xx,yy-3);
+   setmap(91,xx,yy-2);
+   setmap(91,xx,yy-1);
+   setmap(91,xx,yy);
+  end;
+
+ procedure gencactus(xx,yy:integer);
+  begin
+   setmap(30,xx,yy);
+   setmap(30,xx,yy-1);
+   setmap(30,xx,yy-2);
+  end;
+
+ procedure gencane(xx,yy:integer);
+  begin
+   setmap(65,xx,yy);
+   setmap(65,xx,yy-1);
+   setmap(65,xx,yy-2);
+  end;
+
+ procedure treasurechest(x,y:integer);
+  var
+   ix,l,id:integer;
+  begin
+   id:=chest.create(x, y);
+     debug('Treasure Chest');
+     setmap(28,x,y);
+     for ix:=1 to rnd(8) do
+      begin
+       l:=rnd(26);
+       if rnd(22)=rnd(22) then
+        begin
+         chest.setItem(161 ,l, id);
+         chest.setSum(rnd(4)+1, l, id);
+        end; else
+       if rnd(11)=rnd(11) then
+        begin
+         chest.setItem(164 ,l, id);
+         chest.setSum(rnd(4)+1, l, id);
+        end; else
+       if rnd(11)=rnd(11) then
+        begin
+         chest.setItem(183 ,l, id);
+         chest.setSum(rnd(4)+1, l, id);
+        end; else
+       if rnd(11)=rnd(11) then
+        begin
+         chest.setItem(167 ,l, id);
+         chest.setSum(rnd(4)+1, l, id);
+        end; else
+       if rnd(11)=rnd(11) then
+        begin
+         chest.setItem(171 ,l, id);
+         chest.setSum(1, l, id);
+        end; else
+       if rnd(4)=rnd(4) then
+        begin
+         chest.setItem(220 ,l, id);
+         chest.setSum(rnd(8)+8, l, id);
+        end;
+      end;
+  end;
+
+ procedure genteasures(xx,yy:integer);
+  var
+   ix,iy:integer;
+  begin
+   for ix:=0 to 6 do
+   for iy:=0 to 6 do
+    begin
+     setmap(0,xx+ix,yy+iy);
+    end;
+   for ix:=0 to 6 do
+    begin
+     setmap(12,xx+ix,yy);
+     setmap(12,xx+ix,yy+6);
+     setmap(12,xx,yy+ix);
+     setmap(12,xx+6,yy+ix);
+    end;
+
+   setmap(76,xx+3,yy+5);
+   setmapinfo(1,xx+3,yy+5);
+
+   if rnd(2)=1 then
+    treasurechest(xx+1,yy+5);
+
+   if rnd(2)=1 then
+    treasurechest(xx+5,yy+5);
+  end;
+
+ procedure genrude(t,r,xx,yy,xxx,yyy:integer);
+  var
+   ix,iy:integer;
+  begin
+   for ix:=0 to xxx do
+   for iy:=0 to yyy do
+    begin
+      if getmap(xx+ix,yy+iy)=3 then if rnd(r+1)-1=0 then setmap(t,xx+ix,yy+iy);
+    end;
+  end;
+
+ procedure genallrudes;
+  var
+   ix,iy,iu,iv:integer;
+  begin
+   //алмазы
+   for ix:=0 to 255 do
+   for iy:=111 to 127 do
+    if (rnd_pr(1,1,0)=1) then
+     begin
+      for iu:=0 to 2 do
+      for iv:=0 to 2 do
+       if getmap(ix+iu,iy+iv)=3 then setmap(rnd_pr(10,19,getmap(ix+iu,iy+iv)),ix+iu,iy+iv);
+      ix:=ix+3;
+     end;
+
+   //золото
+   for ix:=0 to 255 do
+   for iy:=95 to 127 do
+    if (rnd_pr(3,1,0)=1) then
+     begin
+      for iu:=0 to 2 do
+      for iv:=0 to 2 do
+       if (ix+iu<255) and (iy+iv<126) then
+        if getmap(ix+iu,iy+iv)=3 then setmap(rnd_pr(20,16,getmap(ix+iu,iy+iv)),ix+iu,iy+iv);
+      ix:=ix+3;
+     end;
+
+   //лазурит
+   for ix:=0 to 255 do
+   for iy:=107 to 127 do
+    if (rnd_pr(2,1,0)=1) then
+     begin
+      for iu:=0 to 2 do
+      for iv:=0 to 2 do
+       if (ix+iu<255) and (iy+iv<126) then
+        if getmap(ix+iu,iy+iv)=3 then setmap(rnd_pr(40,54,getmap(ix+iu,iy+iv)),ix+iu,iy+iv);
+      ix:=ix+3;
+     end;
+
+   //редстоун
+   for ix:=0 to 255 do
+   for iy:=107 to 127 do
+    if (rnd_pr(2,1,0)=1) then
+     begin
+      for iu:=0 to 2 do
+      for iv:=0 to 2 do
+       if (ix+iu<255) and (iy+iv<126) then
+        if getmap(ix+iu,iy+iv)=3 then setmap(rnd_pr(40,20,getmap(ix+iu,iy+iv)),ix+iu,iy+iv);
+      ix:=ix+3;
+     end;
+
+   //железо
+   for ix:=0 to 255 do
+   for iy:=63 to 127 do
+    if (rnd_pr(4,1,0)=1) then
+     begin
+      for iu:=0 to 2 do
+      for iv:=0 to 2 do
+       if (ix+iu<255) and (iy+iv<126) then
+        if getmap(ix+iu,iy+iv)=3 then setmap(rnd_pr(40,17,getmap(ix+iu,iy+iv)),ix+iu,iy+iv);
+      ix:=ix+3;
+     end;
+
+   //уголь
+   for ix:=0 to 255 do
+   for iy:=0 to 127 do
+    if (rnd_pr(6,1,0)=1) then
+     begin
+      for iu:=0 to 2 do
+      for iv:=0 to 2 do
+       if (ix+iu<255) and (iy+iv<126) then
+        if getmap(ix+iu,iy+iv)=3 then setmap(rnd_pr(50,18,getmap(ix+iu,iy+iv)),ix+iu,iy+iv);
+      ix:=ix+3;
+     end;
+
+   //гравий
+   for ix:=0 to 255 do
+   for iy:=63 to 126 do
+    if (rnd_pr(2,1,0)=1) then
+     begin
+      for iu:=0 to rnd(5) do
+      for iv:=0 to rnd(5) do
+       if (ix+iu<255) and (iy+iv<126) then
+        if getmap(ix+iu,iy+iv)=3 then setmap(rnd_pr(90,8,getmap(ix+iu,iy+iv)),ix+iu,iy+iv);
+      ix:=ix+3;
+     end;
+
+   //земля на камне
+   for ix:=0 to 255 do
+   for iy:=63 to 127 do
+    if (rnd_pr(1,1,0)=1) then
+     begin
+      for iu:=0 to rnd(5) do
+      for iv:=0 to rnd(5) do
+       if (ix+iu<255) and (iy+iv<126) then
+        if getmap(ix+iu,iy+iv)=3 then setmap(rnd_pr(90,1,getmap(ix+iu,iy+iv)),ix+iu,iy+iv);
+      ix:=ix+3;
+     end;
+  end;
+
+ procedure dec_0(ix,iy:integer);
+  var
+   t:integer;
+  begin
+   t:=rnd(30);
+   if t=0 then setmap(22,ix,iy); else
+   if t=1 then setmap(23,ix,iy); else
+   if t=2 then setmap(24,ix,iy); else
+   if t=3 then setmap(25,ix,iy); else
+   if (t>3) and (t<8) then setmap(57,ix,iy); else
+   if t=8 then genwood1(ix,iy); else
+   if t=9 then genwood2(ix,iy); else
+   if t=10 then setmap(66,ix,iy); else
+   if t=11 then setmap(73,ix,iy); else
+   if t>11 then begin if (getmap(ix-1,iy+1)=50) or (getmap(ix+1,iy+1)=50) then gencane(ix,iy); end; else
+   exit;
+  end;
+
+ procedure dec_1(ix,iy:integer);
+  var
+   t:integer;
+  begin
+   t:=rnd(25);
+   if t=0 then setmap(58,ix,iy); else
+   if t=1 then gencactus(ix,iy); else
+   if t>2 then begin if (getmap(ix-1,iy+1)=50) or (getmap(ix+1,iy+1)=50) then gencane(ix,iy); end; else
+   exit;
+  end;
+
+ procedure dec_2(ix,iy:integer);
+  var
+   t:integer;
+  begin
+   t:=rnd(30);
+   if t=0 then setmap(22,ix,iy); else
+   if t=1 then setmap(23,ix,iy); else
+   if t=2 then genwood1(ix,iy); else
+   if t=3 then genwood2(ix,iy); else
+   if t=4 then genwood3(ix,iy); else
+   if t=5 then setmap(66,ix,iy); else
+   exit;
+  end;
+
+ procedure dec_3(ix,iy:integer);
+  var
+   t:integer;
+  begin
+   t:=rnd(20);
+   if t=1 then setmap(24,ix,iy); else
+   if t=2 then setmap(25,ix,iy); else
+   if t=3 then genfungus1(ix,iy); else
+   if t=4 then genfungus2(ix,iy); else
+   exit;
+  end;
+
+ procedure decorator;
+  var
+   ix,iy,t:integer;
+  begin
+   for ix:=0 to 255 do
+   for iy:=0 to 127 do
+   if getmap(ix,iy)<>0 then
+    begin
+     if (getBiomMap(ix)=0) then
+      begin
+       iy:=iy-1;
+       if (getmap(ix,iy+1)=2) and (getmap(ix,iy)=0) then dec_0(ix,iy);
+       break;
+      end; else
+     if (getBiomMap(ix)=1) then
+      begin
+       iy:=iy-1;
+       if (getmap(ix,iy+1)=7) and (getmap(ix,iy)=0) then dec_1(ix,iy);
+       break;
+      end; else
+     if (getBiomMap(ix)=2) then
+      begin
+       iy:=iy-1;
+       if (getmap(ix,iy+1)=48) and (getmap(ix,iy)=0) then dec_2(ix,iy);
+       break;
+      end; else
+     if (getBiomMap(ix)=3) then
+      begin
+       iy:=iy-1;
+       if (getmap(ix,iy+1)=74) and (getmap(ix,iy)=0) then dec_3(ix,iy);
+       break;
+      end; else
+     break;
+      end;
+  end;
+
+ procedure genwater;
+  var
+   ix,iy,i:integer;
+   g:boolean;
+  begin
+   for ix:=0 to 255 do
+   for iy:=0 to 127 do
+    begin
+     if rnd(5)=rnd(6) then g:=not g;
+     if iy>63 then
+      if (getmap(ix,iy)=2) or (getmap(ix,iy)=48) or (getmap(ix,iy)=74) then
+       begin
+        if g then
+         for i:=0 to rnd(4) do setmap(64,ix,iy+i);
+        else setmap(1,ix,iy);
+        break;
+       end; else
+      if (getmap(ix,iy)=7) then
+       begin
+        if g then
+         for i:=0 to rnd(4) do setmap(64,ix,iy+i);
+        break;
+       end;
+     if getmap(ix,iy)<>0 then break;
+     if iy>=63 then if getmap(ix,iy)=0 then setmap(50,ix,iy);
+    end;
+  end;
+
+ procedure minechest(x,y:integer);
+  var
+   ix,l,id:integer;
+  begin
+   id:=chest.create(x,y);
+     setmap(28,x,y);
+     for ix:=1 to rnd(6)+4 do
+      begin
+       l:=rnd(26);
+       if rnd(75)=rnd(75) then
+        begin
+         chest.setItem(133 ,l, id);
+         chest.setSum(getItemMax(133), l, id);
+        end; else
+       if rnd(25)=rnd(25) then
+        begin
+         chest.setItem(162 ,l, id);
+         chest.setSum(rnd(2)+1, l, id);
+        end; else
+       if rnd(15)=rnd(15) then
+        begin
+         chest.setItem(165 ,l, id);
+         chest.setSum(rnd(3)+1, l, id);
+        end; else
+       if rnd(15)=rnd(15) then
+        begin
+         chest.setItem(166 ,l, id);
+         chest.setSum(rnd(6)+4, l, id);
+        end; else
+       if rnd(15)=rnd(15) then
+        begin
+         chest.setItem(161 ,l, id);
+         chest.setSum(rnd(6)+4, l, id);
+        end; else
+       if rnd(15)=rnd(15) then
+        begin
+         chest.setItem(160 ,l, id);
+         chest.setSum(rnd(6)+3, l, id);
+        end; else
+       if rnd(15)=rnd(15) then
+        begin
+         chest.setItem(164 ,l, id);
+         chest.setSum(rnd(5)+1, l, id);
+        end; else
+       if rnd(4)=rnd(4) then
+        begin
+         chest.setItem(220 ,l, id);
+         chest.setSum(rnd(8)+8, l, id);
+        end;
+      end;
+  end;
+
+ procedure minestruc0(x,y:integer);
+  var
+   ix,iy:integer;
+  begin
+   for ix:=0 to 3 do
+   for iy:=0 to 2 do
+    setmap(0,x+ix,y+iy);
+
+   if rnd(8)=0 then setmap(26,x+1,y+1);
+
+   for ix:=0 to 3 do
+    if getmap(x+ix,y+3)=0 then setmap(4,x+ix,y+3);
+  end;
+
+ procedure minestruc1(x,y:integer);
+  var
+   ix,iy:integer;
+  begin
+   for ix:=0 to 2 do
+   for iy:=0 to 2 do
+    setmap(0,x+ix,y+iy);
+
+   if rnd(8)=0 then setmap(59,x,y);
+   if rnd(8)=0 then setmap(59,x+2,y);
+   setmap(4,x+1,y);
+   setmap(93,x+1,y+1);
+   setmap(93,x+1,y+2);
+   for ix:=0 to 2 do
+    if getmap(x+ix,y+3)=0 then setmap(4,x+ix,y+3);
+  end;
+
+ procedure minestruc2(x,y:integer);
+  var
+   ix,iy:integer;
+  begin
+   for ix:=0 to 2 do
+   for iy:=0 to 2 do
+    setmap(0,x+ix,y+iy);
+
+   if rnd(8)=0 then setmap(59,x+1,y);
+
+   for iy:=0 to 2 do
+    begin
+     setmap(94,x,y+iy);
+     setmap(94,x+2,y+iy);
+    end;
+   for ix:=0 to 2 do
+    if getmap(x+ix,y+3)=0 then setmap(4,x+ix,y+3);
+  end;
+
+ procedure minestruc3(x,y:integer);
+  var
+   ix,iy,id,l:integer;
+  begin
+   for ix:=0 to 2 do
+   for iy:=0 to 2 do
+    setmap(0,x+ix,y+iy);
+
+   minechest(x+1,y+2);
+
+   for ix:=0 to 2 do
+    if getmap(x+ix,y+3)=0 then setmap(4,x+ix,y+3);
+  end;
+
+ procedure genmines(x,y:integer);
+  var
+   mask:array[0..15,0..15] of integer;
+   ix,iy,by:integer;
+  begin
+   for iy:=0 to 15 do
+   for ix:=0 to 15 do
+    mask[ix,iy]:=-1;
+
+   for iy:=rnd(8)+8 downto rnd(8) do
+   for ix:=rnd(8) to rnd(8)+8 do
+    begin
+     if ix-1>=0 then
+      begin
+       if mask[ix-1,iy]=-1 then mask[ix,iy]:=rnd(3); else
+       if mask[ix-1,iy]=0 then if rnd(16)=5 then mask[ix,iy]:=2; else mask[ix,iy]:=1; else
+       if mask[ix-1,iy]=1 then mask[ix,iy]:=0; else
+       if mask[ix-1,iy]=2 then mask[ix,iy]:=rnd(3); else
+       if mask[ix-1,iy]=3 then mask[ix,iy]:=rnd(3);
+      end;
+
+     if mask[ix,iy]=0 then
+      begin
+       if rnd(16)=0 then mask[ix,iy]:=3;
+      end;
+    end;
+
+   for iy:=15 downto 0 do
+   for ix:=0 to 15 do
+    begin
+     if rnd(16)=0 then by:=rnd_min;;
+     if mask[ix,iy]=0 then minestruc0(x+(3*ix),y+(4*iy+by)); else
+     if mask[ix,iy]=1 then minestruc1(x+(3*ix),y+(4*iy+by)); else
+     if mask[ix,iy]=2 then minestruc2(x+(3*ix),y+(4*iy+by)); else
+     if mask[ix,iy]=3 then minestruc3(x+(3*ix),y+(4*iy+by));
+    end;
+  end;
+
+ function get_up(Xi:integer):integer;
+  var
+   iy:integer;
+  begin
+   for iy:=127 downto 0 do
+    if getmap(xi,iy)=0 then begin get_up:=iy; break; end;
+  end;
+
+ function get_down(Xi:integer):integer;
+  var
+   iy:integer;
+  begin
+   for iy:=2 to 127 do
+  if getmap(xi,iy)=0 then begin get_down:=iy; break; end;
+  end;
+
+  procedure gensoulsand(gx,gy:integer;);
+  var
+    ix2,iy2:integer;
+  begin
+    for ix2:=gx-2-rnd(3) to gx+2+rnd(3) do
+    for iy2:=gy-1-rnd(2) to gy+1+rnd(2) do
+    setmap(rnd_pr(80,113,getmap(ix2,iy2)),ix2,iy2);
+  end;
+
+  procedure genglowstone(gx,gy:integer;);
+  var
+    ix2,iy2:integer;
+  begin
+    for ix2:=gx-1-rnd(2) to gx+1+rnd(2) do
+    for iy2:=gy-1-rnd(2) to gy+rnd(2) do
+    setmap(rnd_pr(85,111,getmap(ix2,iy2)),ix2,iy2);
+  end;
+
+ procedure gennether;
+  var
+   ix,iy,h,wtd,ty,ga,tmp:integer;
+  begin
+   for ix:=0 to 255 do
+   for iy:=1 to 126 do
+    begin
+     if (getmap(ix,iy)<>10) and (getmap(ix,iy)<>110) then
+      setmap(109,ix,iy);
+    end;
+   h:=63;
+   ty:=4;
+   for ix:=0 to 255 do
+    begin
+     wtd:=rnd(100);
+     if (wtd>0) and (wtd<30) then h:=h+1;
+     if (wtd>29) and (wtd<60) then h:=h-1;
+     if wtd=0 then h:=h+(2+rnd(3));
+     if wtd=99 then h:=h-(2+rnd(3));
+     if h<30 then h:=31;
+     if h>70 then h:=69;
+     setBiomMap(ty, ix);
+     setBackMap(0, ix);
+     for iy:=h-10-(1-rnd(3)) to h+rnd(2) do
+      begin
+        setmap(0,ix,iy);
+      end;
+    end;
+
+   for ix:=0 to 255 do
+   for iy:=65 to 127 do
+    begin
+     if getmap(ix,iy)=0 then setmap(51,ix,iy);
+    end;
+
+    for ix:=1 to rnd(3)+3 do begin iy:=rnd(256); debug('SoulSand'); gensoulsand(iy,get_up(iy)); end;
+    for ix:=1 to rnd(4)+7 do begin iy:=rnd(256); debug('GlowStone - '+iy); genglowstone(iy,get_down(iy)); end;
+
+   for ix:=0 to 255 do
+   begin
+     setmap(6,ix,127);
+     setmap(6,ix,0);
+   end;
+    player.setX(get_spawn_x*16+4);
+    player.setY((get_up(get_spawn_x)-1)*16);
+    setmap(109,get_spawn_x,get_up(get_spawn_x)+1);
+    setmap(0,get_spawn_x,get_up(get_spawn_x));
+    setmap(0,get_spawn_x,get_up(get_spawn_x)-1);
+    genportal_big(get_spawn_x-2,(get_up(get_spawn_x)-1)-2);
+  end;
+
+ procedure genworld;
+  var
+   ix,iy,h,wtd,ty,ga,tmp:integer;
+  begin
+   pl_world:=0;
+   for ix:=0 to 255 do
+   for iy:=0 to 127 do
+   setmap(0,ix,iy);
+   h:=63;
+   ty:=rnd(4);
+   for ix:=0 to 255 do
+    begin
+     wtd:=rnd(100);
+     if (wtd>0) and (wtd<30) then h:=h+1;
+     if (wtd>29) and (wtd<60) then h:=h-1;
+     if wtd=0 then h:=h+(2+rnd(3));
+     if wtd=99 then h:=h-(2+rnd(3));
+     if h<0 then h:=0;
+     if h>80 then h:=80;
+     if wtd=rnd(100) then begin ty:=rnd(4); debug('Biome:'+ty); end;
+     setBiomMap(ty, ix);
+     setBackMap(h, ix);
+     if getBackMap(ix)>63 then
+      setBackMap(63, ix);
+     for iy:=h to 127 do
+      begin
+       if ty=0 then
+        begin
+         if iy=h then setmap(2,ix,iy);
+         if (iy>h) and (iy<h+4) then setmap(1,ix,iy);
+         if iy>h+3 then setmap(3,ix,iy);
+        end; else
+       if ty=1 then
+        begin
+         if (iy>=h) and (iy<=h+1) then setmap(7,ix,iy);
+         if iy=h+2 then setmap(rnd_pr(50,56,7),ix,iy);
+         if iy=h+3 then setmap(56,ix,iy);
+         if iy>h+3 then setmap(3,ix,iy);
+        end; else
+       if ty=2 then
+        begin
+         if iy=h then setmap(48,ix,iy);
+         if (iy>h) and (iy<h+4) then setmap(1,ix,iy);
+         if iy>h+3 then setmap(3,ix,iy);
+        end;  else
+       if ty=3 then
+        begin
+         if iy=h then setmap(74,ix,iy);
+         if (iy>h) and (iy<h+4) then setmap(1,ix,iy);
+         if iy>h+3 then setmap(3,ix,iy);
+        end;
+      end;
+    end;
+
+   genallrudes;
+
+   for ix:=1 to rnd(4)+1 do begin debug('Cave'); gencave(rnd(256),64-rnd(10)); end;
+
+   for ix:=1 to rnd(3) do begin debug('Mine'); genmines(rnd(256),rnd(64)+64); end;
+
+   for ix:=1 to rnd(4) do begin debug('Treasure'); genteasures(rnd(256),rnd(64)+64); end;
+
+   genwater;
+
+   for ix:=0 to 255 do
+   for iy:=117 to 127 do
+    begin
+     if getmap(ix,iy)=0 then setmap(51,ix,iy);
+    end;
+
+   decorator;
+
+   for ix:=0 to 255 do
+    begin
+     if getBiomMap(ix)=2 then
+      for iy:=0 to 127 do
+       if getmap(ix,iy)<>0 then
+        begin
+         if getmap(ix,iy)=50 then setmap(62,ix,iy); else
+         if (getmap(ix,iy)<>22) and (getmap(ix,iy)<>23) then setmap(63,ix,iy-1);
+         break;
+        end;
+    end;
+
+   for ix:=0 to 255 do setmap(6,ix,127);
+
+   if bon_chest then create_bonus_chest(get_spawn_x,get_spawn_y+1);
+
+   //drawmap;
+   delay(200);
+   debug('World Generated!');
+  end;
+
+initialization
+ 
+end.

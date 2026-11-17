@@ -1,0 +1,99 @@
+unit gameui;
+
+interface
+ const
+  UI_MAX_STACK=2;//3
+  UI_MAX_ELEMENTS=62;//63
+
+  UI_TYPE_NULL=0;
+
+  UI_ERROR=-1;
+
+ procedure NewUILayer;
+ procedure DelUILayer;
+ function addUIElement(el_type, x, y:integer):integer;
+ procedure delUIElement(i:integer);
+ procedure clearUIElements;
+ function getUIx(i:integer):integer;
+ function getUIy(i:integer):integer;
+ function getUIw(i:integer):integer;
+ function getUIh(i:integer):integer;
+
+implementation
+//Main UI functions and vars
+ var
+  layer:integer;
+  ui_type: array [0..UI_MAX_STACK, 0..UI_MAX_ELEMENTS] of integer;
+  ui_x: array [0..UI_MAX_STACK, 0..UI_MAX_ELEMENTS] of integer;
+  ui_y: array [0..UI_MAX_STACK, 0..UI_MAX_ELEMENTS] of integer;
+
+ procedure NewUILayer;
+  begin
+   layer:=layer+1;
+   //Test
+   ui_type[layer, 0]:=ui_type[layer, 0];
+  end;
+
+ procedure DelUILayer;
+  begin
+   layer:=layer-1;
+   //Test
+   ui_type[layer, 0]:=ui_type[layer, 0];
+  end;
+
+ //Return id added element or UI_ERROR
+ function addUIElement(el_type, x, y:integer):integer;
+  var
+   i:integer;
+  begin
+   for i:=0 to UI_MAX_ELEMENTS do
+    if ui_type[layer, i]=UI_TYPE_NULL then
+     begin
+      ui_type[layer, i]:=el_type;
+      ui_x[layer, i]:=x;
+      ui_y[layer, i]:=y;
+      addUIElement:=i;
+      exit;
+     end;
+
+   addUIElement:=UI_ERROR;
+  end;
+
+ procedure delUIElement(i:integer);
+  begin
+   ui_type[layer, i]:=UI_TYPE_NULL;
+   ui_x[layer, i]:=0;
+   ui_y[layer, i]:=0;
+  end;
+
+ procedure clearUIElements;
+  var
+   i:integer;
+  begin
+   for i:=0 to UI_MAX_ELEMENTS do
+    delUIElement(i);
+  end;
+
+ function getUIx(i:integer):integer;
+  begin
+   getUIx:=ui_x[layer, i];
+  end;
+
+ function getUIy(i:integer):integer;
+  begin
+   getUIy:=ui_y[layer, i];
+  end;
+
+ function getUIw(i:integer):integer;
+  begin
+   getUIw:=0;
+  end;
+
+ function getUIh(i:integer):integer;
+  begin
+   getUIh:=0;
+  end;
+
+initialization
+
+end.

@@ -1,0 +1,106 @@
+<Project>
+	<MIDlet Name="CaveCraft" Vendor="DeaDSoftWare" Version="1.9.0" Icon="/title/icon.png"/>
+	<Sources>
+		<source filename="CAVE.mpsrc"/>
+		<source filename="randoms.mpsrc"/>
+		<source filename="utils.mpsrc"/>
+		<source filename="invui.mpsrc"/>
+		<source filename="particles.mpsrc"/>
+		<source filename="items_logic.mpsrc"/>
+		<source filename="mob.mpsrc"/>
+		<source filename="mobs.mpsrc"/>
+		<source filename="console.mpsrc"/>
+		<source filename="craft.mpsrc"/>
+		<source filename="cellui.mpsrc"/>
+		<source filename="vars.mpsrc"/>
+		<source filename="testspawn.mpsrc"/>
+		<source filename="keyboard.mpsrc"/>
+		<source filename="worldgen.mpsrc"/>
+		<source filename="items.mpsrc"/>
+		<source filename="drop.mpsrc"/>
+		<source filename="furnace.mpsrc"/>
+		<source filename="func.mpsrc"/>
+		<source filename="Phy.mpsrc"/>
+		<source filename="player.mpsrc"/>
+		<source filename="chest.mpsrc"/>
+		<source filename="inv.mpsrc"/>
+		<source filename="video.mpsrc"/>
+	</Sources>
+	<Resources>
+		<resource filename="title/icon.png" configurations=":all:"/>
+		<resource filename="terrain.png" configurations=":all:"/>
+		<resource filename="gui/gui.png" configurations=":all:"/>
+		<resource filename="gui/inventory.png" configurations=":all:"/>
+		<resource filename="title/background.png" configurations=":all:"/>
+		<resource filename="gui/items.png" configurations=":all:"/>
+		<resource filename="gui/fastcraft.png" configurations=":all:"/>
+		<resource filename="gui/container.png" configurations=":all:"/>
+		<resource filename="title/cavelogo.png" configurations=":all:"/>
+		<resource filename="mobs/char_ani.png" configurations=":all:"/>
+		<resource filename="terrain/rain.png" configurations=":all:"/>
+		<resource filename="gui/creative.png" configurations=":all:"/>
+		<resource filename="terrain/light.png" configurations=":all:"/>
+		<resource filename="terrain/snow.png" configurations=":all:"/>
+		<resource filename="terrain/particles.png" configurations=":all:"/>
+		<resource filename="terrain/explosion.png" configurations=":all:"/>
+		<resource filename="mobs/zombie_ani.png" configurations=":all:"/>
+		<resource filename="mobs/pig_anims.png" configurations=":all:"/>
+		<resource filename="mobs/sheep_anims.png" configurations=":all:"/>
+		<resource filename="mobs/sheep_fur.png" configurations=":all:"/>
+		<resource filename="gui/mapbg.png" configurations=":all:"/>
+		<resource filename="Adler32.class" configurations=":all:"/>
+		<resource filename="Deflate$Config.class" configurations=":all:"/>
+		<resource filename="Deflate.class" configurations=":all:"/>
+		<resource filename="Encoder.class" configurations=":all:"/>
+		<resource filename="JZlib.class" configurations=":all:"/>
+		<resource filename="StaticTree.class" configurations=":all:"/>
+		<resource filename="Tree.class" configurations=":all:"/>
+		<resource filename="ZStream.class" configurations=":all:"/>
+		<resource filename="default_font.png" configurations=":all:"/>
+		<resource filename="JpegEncoder$DCT.class" configurations=":all:"/>
+		<resource filename="JpegEncoder$Huffman.class" configurations=":all:"/>
+		<resource filename="JpegEncoder$JpegInfo.class" configurations=":all:"/>
+		<resource filename="JpegEncoder.class" configurations=":all:"/>
+		<resource filename="mobs/chicken_anims.png" configurations=":all:"/>
+		<resource filename="mobs/creeper_anims.png" configurations=":all:"/>
+		<resource filename="gui/partition.png" configurations=":all:"/>
+		<resource filename="terrain/sky.png" configurations=":all:"/>
+		<resource filename="terrain/sun.png" configurations=":all:"/>
+		<resource filename="autoexec.cfg" configurations=":all:"/>
+		<resource filename="pack.png" configurations=":all:"/>
+		<resource filename="maps.png" configurations=":all:"/>
+		<resource filename="back.png" configurations=":all:"/>
+		<resource filename="gui/sign.png" configurations=":all:"/>
+		<resource filename="mobs/cow.png" configurations=":all:"/>
+		<resource filename="mobs/cow2.png" configurations=":all:"/>
+		<resource filename="gui/touch.png" configurations=":all:"/>
+		<resource filename="title/splashes.txt" configurations=":all:"/>
+		<resource filename="gui/furnace.png" configurations=":all:"/>
+		<resource filename="gui/float.png" configurations=":all:"/>
+		<resource filename="terrain/moon_phases/moon_phase_0.png" configurations=":all:"/>
+		<resource filename="terrain/moon_phases/moon_phase_1.png" configurations=":all:"/>
+		<resource filename="terrain/moon_phases/moon_phase_2.png" configurations=":all:"/>
+		<resource filename="terrain/moon_phases/moon_phase_3.png" configurations=":all:"/>
+		<resource filename="terrain/moon_phases/moon_phase_4.png" configurations=":all:"/>
+		<resource filename="terrain/moon_phases/moon_phase_5.png" configurations=":all:"/>
+		<resource filename="terrain/moon_phases/moon_phase_6.png" configurations=":all:"/>
+		<resource filename="terrain/moon_phases/moon_phase_7.png" configurations=":all:"/>
+		<resource filename="mobs/spider_ani.png" configurations=":all:"/>
+		<resource filename="mobs/pigman_ani.png" configurations=":all:"/>
+		<resource filename="gui/clock.png" configurations=":all:"/>
+		<resource filename="gui/compass.png" configurations=":all:"/>
+		<resource filename="dl" configurations=":all:"/>
+		<resource filename="items.cfg" configurations=":all:"/>
+		<resource filename="blocks.cfg" configurations=":all:"/>
+		<resource filename="furnace.cfg" configurations=":all:"/>
+		<resource filename="tools.cfg" configurations=":all:"/>
+		<resource filename="crafts.cfg" configurations=":all:"/>
+		<resource filename="textures.cfg" configurations=":all:"/>
+		<resource filename="keyboard.cfg" configurations=":all:"/>
+		<resource filename="vkeyboard.cfg" configurations=":all:"/>
+	</Resources>
+	<BuildConfigurations>
+		<configuration name="Default" type="fullscreen" version="2" math="1"/>
+		<ActiveConfiguration index="0"/>
+	</BuildConfigurations>
+</Project>

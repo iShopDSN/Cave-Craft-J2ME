@@ -1,0 +1,110 @@
+//Этот модуль можно свободно распространять, изменять и использовать в своих проектах без указания автора оригинала.
+unit vars;
+
+interface
+ const
+   max_sounds=13;
+
+   FONT_STD_COLOR=$FFFFFFFF;
+   FONT_YELLOW_COLOR=$FFFFFF00;
+   FONT_MAX_SYM=127;
+   FONT_SYM_SIZE=8;
+
+   MAP_W=256;
+   MAP_H=128;
+
+ type
+  R_0=record
+   m_type:integer;
+   m_x:integer;
+   m_y:integer;
+   m_posi:integer;
+   m_velx:integer;
+   m_vely:integer;
+   m_ani:integer;
+   m_min_vely:integer;
+   m_hp:integer;
+   m_del:integer;
+   m_int:integer;
+   m_fall:boolean;
+   m_jmp:boolean;
+   m_velani:boolean;
+  end;
+
+  R_1=record
+   hp:integer;
+   velx:integer;
+   w:integer;
+   h:integer;
+   maxani:integer;
+  end;
+
+ var
+  tex,tex8:array [0..0] of image;
+  item,item8:array [0..0] of image;
+  camx,camy:integer;//Координаты камеры
+  curx,cury:integer;//Координаты курсора игрока
+  game_time:integer;//Игровое время
+  pl_world:integer;//мир в котором находится игрок (0 - обычный мир, 1 - нижний мир)
+  gamemode:integer;//Режим игры
+  fps:integer;//Текущий фпс, можно использовать для синхронизации
+  bon_chest:boolean;//Генерировать бонусный сундук?
+
+  mob:array [0..31] of R_0;//Массив мобов
+  mob_info:array [0..11] of R_1;//Характеристики типов мобов (заполняется в mobs)
+  s_get_drp:boolean;//Подбирать дроп с земли
+
+  b_sign:array [0..31] of boolean;
+  sign:array [0..31] of string;
+
+  bl_ani5:integer;
+  bl_ani5_v,bl_ani5_d:boolean;
+
+  tex_pack:string;
+  font:array [0..127] of image;
+  fish:boolean;
+
+  fish_time:integer;
+  hung_time,hp_time,air_time,portal_time:integer;
+  fx,fy:integer;
+
+ maxBlockTex, maxItemTex:integer;
+
+ procedure initBlockTex(i:integer);
+ procedure initItemTex(i:integer);
+
+implementation
+
+ procedure initBlockTex(i:integer);
+  begin
+   maxblocktex:=i;
+   i:=i+1;
+   bytecode
+    iload 0;
+    multianewarray class '[Ljavax/microedition/lcdui/Image;', 1;
+    putstatic field 'vars', 'tex', '[Ljavax/microedition/lcdui/Image;';
+   end;
+   bytecode
+    iload 0;
+    multianewarray class '[Ljavax/microedition/lcdui/Image;', 1;
+    putstatic field 'vars', 'tex8', '[Ljavax/microedition/lcdui/Image;';
+   end;
+  end;
+
+ procedure initItemTex(i:integer);
+  begin
+   maxItemTex:=i;
+   i:=i+1;
+   bytecode
+    iload 0;
+    multianewarray class '[Ljavax/microedition/lcdui/Image;', 1;
+    putstatic field 'vars', 'item', '[Ljavax/microedition/lcdui/Image;';
+   end;
+   bytecode
+    iload 0;
+    multianewarray class '[Ljavax/microedition/lcdui/Image;', 1;
+    putstatic field 'vars', 'item8', '[Ljavax/microedition/lcdui/Image;';
+   end;
+  end;
+
+end.

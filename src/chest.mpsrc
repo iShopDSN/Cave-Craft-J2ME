@@ -1,0 +1,128 @@
+unit chest;
+
+interface
+ const
+  MAX_CHEST=31;
+
+ function create(x, y:integer):integer;
+ procedure destroy(drp:boolean; x, y:integer);
+
+ function getItem(n, i:integer):integer;
+ function getSum(n, i:integer):integer;
+ procedure setItem(val, n, i:integer);
+ procedure setSum(val, n, i:integer);
+
+ procedure resetData;
+ procedure saveData;
+ procedure loadData;
+
+implementation
+ uses maps, drop, vars, jsr75i, func;
+ const
+  MAX_CELL=26;
+  CHEST_ERROR=-1;
+ var
+  chest_b: array [0..MAX_CHEST] of boolean;
+  chest_item, chest_sum: array [0..MAX_CELL, 0..MAX_CHEST] of integer;
+
+ function getItem(n, i:integer):integer;
+  begin
+   getItem:=chest_item[n, i];
+  end;
+
+ function getSum(n, i:integer):integer;
+  begin
+   getSum:=chest_sum[n, i];
+  end;
+
+ procedure setItem(val, n, i:integer);
+  begin
+   chest_item[n, i]:=val;
+  end;
+
+ procedure setSum(val, n, i:integer);
+  begin
+   chest_sum[n, i]:=val;
+  end;
+
+ function create(x, y:integer):integer;
+  var
+   i, j:integer;
+  begin
+   for i:=0 to MAX_CHEST do
+    if chest_b[i]=false then
+     begin
+      chest_b[i]:=true;
+      for j:=0 to MAX_CELL do
+       begin
+        setItem(0, j, i);
+        setSum(0, j, i);
+       end;
+      setMapInfo(i, x, y);
+      create:=i;
+      exit;
+     end;
+   create:=CHEST_ERROR;
+  end;
+
+ procedure destroy(drp:boolean; x, y:integer);
+  var
+   i, j:integer;
+  begin
+   i:=getMapInfo(x, y);
+   chest_b[i]:=false;
+   for j:=0 to MAX_CELL do
+    begin
+     if drp then
+      drop.create(getItem(j, i), getSum(j, i), x*16+4, y*16+4);
+     setItem(0, j, i);
+     setSum(0, j, i);
+    end;
+  end;
+
+ procedure resetData;
+  var
+   i, j:integer;
+  begin
+   for i:=0 to MAX_CHEST do
+    begin
+     chest_b[i]:=false;
+     for j:=0 to MAX_CELL do
+      begin
+       setItem(0, j, i);
+       setSum(0, j, i);
+      end;
+    end;
+  end;
+
+ procedure saveData;
+  var
+   i, j:integer;
+  begin
+   for i:=0 to MAX_CHEST do
+    begin
+     writebool(chest_b[i]);
+     for j:=0 to MAX_CELL do
+      begin
+       write_byte(getItem(j, i));
+       writeint(getSum(j, i));
+      end;
+    end;
+  end;
+
+ procedure loadData;
+  var
+   i, j:integer;
+  begin
+   for i:=0 to MAX_CHEST do
+    begin
+     chest_b[i]:=readbool;
+     for j:=0 to MAX_CELL do
+      begin
+       setItem(read_byte, j, i);
+       setSum(ReadInt, j, i);
+      end;
+    end;
+  end;
+
+end.

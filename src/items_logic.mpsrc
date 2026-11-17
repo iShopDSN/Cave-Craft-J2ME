@@ -1,0 +1,1468 @@
+unit items_logic;
+
+interface
+ function createsign(ii,ij:integer):integer;
+ procedure destsign(id:integer);
+
+ function set_block_code(it,xx,yy:integer):boolean;//Выполнение кода при установке блока
+ procedure destroy_block_cr(id,xx,yy:integer);//Выполнение кода при разрушении блока в креативе
+ procedure destroy_block_0(id,xx,yy:integer);//Выполнение кода при разрушении блока не "тем" инструментом
+ procedure destroy_block_1(id,xx,yy:integer);//Выполнение кода при разрушении блока "нужным" инструментом
+
+ function useBlock(invcur, x, y:integer):boolean;
+ function useItem(invcur, x, y:integer):boolean;
+
+ procedure updateBlock(x, y:integer);
+
+implementation
+ uses invui, maps, drop, console, furnace, png3, func, jpeg, mobs, vars, bmp, items, chest, inv, player, items_store, particles, worldgen, phy;
+
+procedure usebonemeal(block:integer);
+ var
+  ix,iy,rnd_set:integer;
+ begin
+  if block=2 then
+   begin
+    for ix:=curx-4 to curx+4 do
+     for iy:=cury-4 to cury+4 do
+      begin
+       if (getmap(ix,iy+1)=2) and (getmap(ix,iy)=0) then
+        begin
+         rnd_set:=random(3);
+         if rnd_set=0 then setmap(22,ix,iy); else
+         if rnd_set=1 then setmap(23,ix,iy); else
+         if rnd_set=2 then setmap(57,ix,iy); else
+        end;
+      end;
+    inv.setSum(inv.getSum(invslot)-1, invslot);
+    inv.fixNull(invslot);
+   end; else
+  if block=122 then
+   begin
+    setmapinfo(3,curx,cury);
+    inv.setSum(inv.getSum(invslot)-1, invslot);
+    inv.fixNull(invslot);
+   end;
+  else
+  if (block=123) or (block=124) then
+   begin
+    setmapinfo(8,curx,cury);
+    inv.setSum(inv.getSum(invslot)-1, invslot);
+    inv.fixNull(invslot);
+   end;
+  else
+  if block=52 then
+   begin
+    genwood1(curx, cury);
+    inv.setSum(inv.getSum(invslot)-1, invslot);
+    inv.fixNull(invslot);
+   end;
+  else
+  if block=114 then
+   begin
+    genwood2(curx, cury);
+    inv.setSum(inv.getSum(invslot)-1, invslot);
+    inv.fixNull(invslot);
+   end;
+  else
+  if block=115 then
+   begin
+    genwood3(curx, cury);
+    inv.setSum(inv.getSum(invslot)-1, invslot);
+    inv.fixNull(invslot);
+  end;
+ end;
+
+function searchportal(ix,iy:integer):boolean;
+ begin
+  if (getmap(ix+1,iy)=10) and (getmap(ix-1,iy-1)=10) and (getmap(ix+2,iy-1)=10) and (getmap(ix-1,iy-2)=10) and (getmap(ix+2,iy-2)=10) and (getmap(ix-1,iy-3)=10) and (getmap(ix+2,iy-3)=10) and (getmap(ix,iy-4)=10) and (getmap(ix+1,iy-4)=10) then
+   searchportal:=true; else
+  searchportal:=false;
+ end;
+
+procedure create_screenshot_png;
+ var
+  screen:image;
+  date:string;
+  i,time:integer;
+ begin
+  time:=getCurrentTime;
+  screen:=ImageFromCanvas(0,0,getWidth,getHeight);
+  date:=''+getWeekDay(time)+'-'+getMonth(time)+'-'+getDay(time)+'_'+getHour(time)+'.'+getMinute(time)+'.'+getSecond(time);
+  i:=save_png(screen,sd+'/cavecraft/screenshots/'+date+'.png');
+  addToLog('Screenshot saved!');
+ end;
+
+procedure create_screenshot_jpeg;
+ var
+  screen:image;
+  date:string;
+  time:integer;
+ begin
+  time:=getCurrentTime;
+  screen:=ImageFromCanvas(0,0,getWidth,getHeight);
+  date:=''+getWeekDay(time)+'-'+getMonth(time)+'-'+getDay(time)+'_'+getHour(time)+'.'+getMinute(time)+'.'+getSecond(time);
+  jpeg.saveimagetofile(screen,s_jpeg_quality,'/'+sd+'/cavecraft/screenshots/'+date+'.jpg');
+  addToLog('Screenshot saved!');
+ end;
+
+procedure create_screenshot_bmp;
+ var
+  screen:image;
+  date:string;
+  time:integer;
+ begin
+  time:=getCurrentTime;
+  screen:=ImageFromCanvas(0,0,getWidth,getHeight);
+  date:=''+getWeekDay(time)+'-'+getMonth(time)+'-'+getDay(time)+'_'+getHour(time)+'.'+getMinute(time)+'.'+getSecond(time);
+  savebmp(screen,'/'+sd+'/cavecraft/screenshots/'+date+'.bmp');
+  addToLog('Screenshot saved!');
+ end;
+
+procedure boom(rr,mm,xx,yy:integer);
+ var
+  ix,iy,iz,ir,imob,erru,minhp:integer;
+  rays:array [0..359] of integer;
+  mobs_minhp:array[0..31] of integer;
+ begin
+  setmap(0,xx,yy);
+  setmapinfo(0,xx,yy);
+  for iz:=0 to 359 do
+   rays[iz]:=mm;
+
+  for ir:=1 to rr do
+  for iz:=0 to 359 do
+  if rays[iz]>0 then
+   begin
+    if (iz>=0) and (iz<=180) and (ir=1) then erru:=-1; else erru:=0;
+    if (iz>=180) and (iz<=360) and (ir=1) then erru:=1; else erru:=0;
+    ix:=xx+trunc(cos(iz)*ir)+erru;
+    iy:=yy+trunc(sin(iz)*ir)+erru;
+    rays[iz]:=rays[iz]-getBlockHp(getmap(ix,iy));
+    if rays[iz]<0 then rays[iz]:=0;
+    if coll_boom(ix,iy)=true then minhp:=minhp+(rays[iz]*2);
+    for imob:=0 to 31 do
+     if mob[imob].m_hp>0 then
+      begin
+       if mob_coll_boom(imob,ix,iy)=true then begin mobs_minhp[imob]:=mobs_minhp[imob]+(rays[iz]*2); mob[imob].m_hp:=0; end;
+      end;
+    if getmap(ix,iy)=27 then boom(4,100,ix,iy);
+    if getBlockHp(getmap(ix,iy))<=mm then
+     begin
+      if 30<=random(100) then destroy_block_1(getmap(ix,iy),ix,iy);
+      setmap(0,ix,iy);
+      create_particle(7,(ix*16)+8-16,(iy*16)+8-16);
+     end;
+   end;
+  minhp:=minhp/360;
+  hp:=hp-minhp;
+  for imob:=0 to 31 do
+   begin
+    mobs_minhp[imob]:=mobs_minhp[imob]/360;
+    mob[imob].m_hp:=mob[imob].m_hp-mobs_minhp[imob];
+   end;
+ end;
+
+function createsign(ii,ij:integer):integer;
+ var
+  ix,ymp:integer;
+  tx:array [0..3] of integer;
+  exitCmd,cli:command;
+ begin
+  for ix:=0 to 31 do
+   if b_sign[ix]=false then
+    begin
+     b_sign[ix]:=true;
+     sign[ix]:='';
+     setmapinfo(ix,ii,ij);
+     debug('Sg'+ix);
+
+     clearForm;
+     exitCmd:=createCommand('Ok',CM_OK,1);
+     //Команду добавляем ДО showForm, иначе кнопка не цепляется к форме
+     addCommand(exitCmd);
+     ymp:=formAddString('Text:');
+     tx[0]:=formAddTextField('','',15,TF_ANY);
+     tx[1]:=formAddTextField('','',15,TF_ANY);
+     tx[2]:=formAddTextField('','',15,TF_ANY);
+     tx[3]:=formAddTextField('','',15,TF_ANY);
+     showForm;
+     repaint;
+     delay(100);
+     repeat
+      cli:=getClickedCommand;
+      delay(1);
+     until cli=exitCmd;
+     sign[ix]:=formGetText(tx[0])+#13+formGetText(tx[1])+#13+formGetText(tx[2])+#13+formGetText(tx[3])+#13;
+     showCanvas;
+
+     createsign:=0;
+     exit;
+    end; else
+   createsign:=-1;
+ end;
+
+procedure destsign(id:integer);
+ var
+  ix:integer;
+ begin
+  b_sign[id]:=false;
+  sign[id]:='';
+ end;
+
+procedure destroy_block_cr(id, xx, yy:integer);
+  begin
+   if id=27 then
+    begin
+     setmap(0,xx,yy);
+     setmapinfo(0,xx,yy);
+    end; else
+   if id=28 then
+    begin
+     setmap(0,xx,yy);
+     chest.destroy(false, xx, yy);
+    end; else
+   if id=62 then
+    begin
+     setmap(50,xx,yy);
+    end; else
+   if id=66 then
+    begin
+     setmap(0,xx,yy);
+     setmapinfo(8,xx+1,yy);
+    end; else
+   if id=73 then
+    begin
+     setmap(0,xx,yy);
+     setmapinfo(8,xx+1,yy);
+    end; else
+   if id=77 then
+    begin
+     setmap(0,xx,yy);
+     setmap(0,xx+1,yy);
+    end; else
+   if id=78 then
+    begin
+     setmap(0,xx,yy);
+     setmap(0,xx-1,yy);
+    end; else
+   if id=79 then
+    begin
+     setmap(0,xx,yy);
+     setmap(0,xx,yy+1);
+    end; else
+   if id=80 then
+    begin
+     setmap(0,xx,yy);
+     setmap(0,xx,yy-1);
+    end; else
+   if id=81 then
+    begin
+     setmap(0,xx,yy);
+     setmap(0,xx,yy-1);
+    end; else
+   if id=82 then
+    begin
+     setmap(0,xx,yy);
+     setmap(0,xx,yy-1);
+    end; else
+   if id=102 then
+    begin
+     setmap(0,xx,yy);
+     chest.destroy(false, xx, yy);
+    end; else
+   if id=104 then
+    begin
+     setmap(0,xx,yy);
+     destsign(getmapinfo(xx,yy));
+    end; else
+   if id=106 then
+    begin
+     setmap(0,xx,yy);
+     DestroyFurnace(xx, yy);
+    end; else
+   if id=121 then
+    begin
+     setmap(0,xx,yy);
+     setmapinfo(0,xx,yy);
+    end; else
+   if id=122 then
+    begin
+     setmap(0,xx,yy);
+     setmapinfo(0,xx,yy);
+    end; else
+     begin
+      setmap(0,xx,yy);
+      setmapinfo(0,xx,yy);
+     end;
+  end;
+
+ function set_block_code(it,xx,yy:integer):boolean;//Если false тогда блок устанавливается
+  begin
+   if it=28 then
+    begin
+     if chest.create(xx,yy)=-1 then set_block_code:=true;
+    end; else
+   if it=102 then
+    begin
+     if chest.create(xx,yy)=-1 then set_block_code:=true;
+    end;
+   if it=104 then
+    begin
+     if createsign(xx,yy)=-1 then set_block_code:=true;
+    end; else
+    if it=106 then
+     begin
+      if CreateFurnace(xx, yy)=FURNACE_ERROR then
+       set_block_code:=true;
+     end; else
+    if it=121 then
+     begin
+      setmapinfo(16,xx,yy);
+      set_block_code:=false;
+     end; else
+   set_block_code:=false;
+  end;
+
+ procedure destroy_block_0(id,xx,yy:integer);
+  begin
+   if id=27 then
+    begin
+     setmapinfo(0,xx,yy);
+    end; else
+   if id=21 then
+    begin
+     if random(8)=random(8) then drop.create(201,1,xx*16+4,yy*16+4); else
+     if random(5)=random(5) then drop.create(52,1,xx*16+4,yy*16+4);
+    end; else
+   if id=28 then
+    begin
+     chest.destroy(false, xx, yy);
+    end; else
+   if id=57 then
+    begin
+     if random(4)=random(4) then drop.create(217,1,xx*16+4,yy*16+4);
+    end; else
+   if id=62 then
+    begin
+     setmap(50,xx,yy);
+    end; else
+   if id=77 then
+    begin
+     setmap(0,xx+1,yy);
+    end; else
+   if id=78 then
+    begin
+     setmap(0,xx-1,yy);
+    end; else
+   if id=79 then
+    begin
+     setmap(0,xx,yy+1);
+    end; else
+   if id=80 then
+    begin
+     setmap(0,xx,yy-1);
+    end; else
+   if id=81 then
+    begin
+     setmap(0,xx,yy+1);
+    end; else
+   if id=82 then
+    begin
+     setmap(0,xx,yy-1);
+    end; else
+   if id=102 then
+    begin
+     chest.destroy(true, xx, yy);
+    end; else
+   if id=104 then
+    begin
+     destsign(getmapinfo(xx,yy));
+    end; else
+   if id=106 then
+    begin
+     DestroyFurnace(xx, yy);
+    end; else
+   if id=112 then
+    begin
+     if random(8)=random(8) then drop.create(201,1,xx*16+4,yy*16+4); else
+     if random(5)=random(5) then drop.create(114,1,xx*16+4,yy*16+4);
+    end; else
+   if id=87 then
+    begin
+     if random(10)=random(10) then drop.create(115,1,xx*16+4,yy*16+4);
+    end; else
+   if id=121 then
+    begin
+     setmap(0,xx,yy);
+     setmapinfo(0,xx,yy);
+    end; else
+   if id=122 then
+    begin
+     if getmapinfo(xx,yy)<3 then drop.create(217,random(4),xx*16+4,yy*16+4); else
+     if getmapinfo(xx,yy)=3 then begin drop.create(217,random(4),xx*16+4,yy*16+4); drop.create(218,1,xx*16+4,yy*16+4); end;
+     setmap(0,xx,yy);
+     setmapinfo(0,xx,yy);
+    end;
+   if (id=123) or (id=124) then
+    begin
+     drop.create(221+(id-123),random(4),xx*16+4,yy*16+4);
+    end;
+   //setmap(0,xx,yy);
+   //setmapinfo(0,xx,yy);
+  end;
+
+ procedure destroy_block_1(id,xx,yy:integer);
+  begin
+   if id=27 then
+    begin
+     setmap(0,xx,yy);
+     setmapinfo(0,xx,yy);
+    end; else
+   if id=2 then
+    begin
+     drop.create(1,1,xx*16+4,yy*16+4);
+    end; else
+   if id=3 then
+    begin
+     drop.create(5,1,xx*16+4,yy*16+4);
+    end; else
+   if id=8 then
+    begin
+     if random(10)=random(10) then drop.create(207,1,xx*16+4,yy*16+4); else
+     drop.create(8,1,xx*16+4,yy*16+4);
+    end; else
+   if id=11 then
+    begin
+     drop.create(170,3,xx*16+4,yy*16+4);
+    end; else
+   if id=18 then
+    begin
+     drop.create(160,1,xx*16+4,yy*16+4);
+    end; else
+    if id=19 then
+    begin
+     drop.create(162,1,xx*16+4,yy*16+4);
+    end; else
+   if id=20 then
+    begin
+     drop.create(161,4+random(2),xx*16+4,yy*16+4);
+    end; else
+   if id=28 then
+    begin
+     chest.destroy(true, xx, yy);
+     drop.create(28,1,xx*16+4,yy*16+4);
+    end; else
+   if id=48 then
+    begin
+     drop.create(1,1,xx*16+4,yy*16+4);
+    end; else
+   if id=50 then
+    begin
+     drop.create(0,0,xx*16+4,yy*16+4);
+    end; else
+   if id=51 then
+    begin
+     drop.create(0,0,xx*16+4,yy*16+4);
+    end; else
+   if id=54 then
+    begin
+     drop.create(166,4+random(4),xx*16+4,yy*16+4);
+    end; else
+   if id=59 then
+    begin
+     drop.create(167,1,xx*16+4,yy*16+4);
+    end; else
+   if id=61 then
+    begin
+     drop.create(168,4+random(2),xx*16+4,yy*16+4);
+    end; else
+   if id=62 then
+    begin
+     setmap(0,xx,yy);
+    end; else
+   if id=63 then
+    begin
+     drop.create(168,1,xx*16+4,yy*16+4);
+    end; else
+   if id=64 then
+    begin
+     drop.create(169,4,xx*16+4,yy*16+4);
+    end; else
+   if id=66 then
+    begin
+     setmapinfo(8,xx+1,yy);
+     drop.create(66,1,xx*16+4,yy*16+4);
+    end; else
+   if id=73 then
+    begin
+     drop.create(176,3+random(4),xx*16+4,yy*16+4);
+     setmapinfo(8,xx+1,yy);
+    end; else
+   if id=74 then
+    begin
+     drop.create(1,1,xx*16+4,yy*16+4);
+    end; else
+   if id=75 then
+    begin
+     drop.create(9,1,xx*16+4,yy*16+4);
+    end; else
+   if id=76 then
+    begin
+     setmapinfo(0,xx,yy);
+    end; else
+   if id=77 then
+    begin
+     drop.create(179,1,xx*16+4,yy*16+4);
+     setmap(0,xx+1,yy);
+    end; else
+   if id=78 then
+    begin
+     drop.create(179,1,xx*16+4,yy*16+4);
+     setmap(0,xx-1,yy);
+    end; else
+   if id=79 then
+    begin
+     drop.create(178,1,xx*16+4,yy*16+4);
+     setmap(0,xx,yy+1);
+    end; else
+   if id=80 then
+    begin
+     drop.create(178,1,xx*16+4,yy*16+4);
+     setmap(0,xx,yy-1);
+    end; else
+   if id=81 then
+    begin
+     drop.create(178,1,xx*16+4,yy*16+4);
+     setmap(0,xx,yy+1);
+    end; else
+   if id=82 then
+    begin
+     drop.create(178,1,xx*16+4,yy*16+4);
+     setmap(0,xx,yy-1);
+    end; else
+   if id=84 then
+    begin
+     drop.create(83,1,xx*16+4,yy*16+4);
+    end; else
+   if id=86 then
+    begin
+     drop.create(85,1,xx*16+4,yy*16+4);
+    end; else
+   if id=88 then
+    begin
+     drop.create(24,random(3)-1,xx*16+4,yy*16+4);
+    end; else
+   if id=89 then
+    begin
+     drop.create(24,random(3)-1,xx*16+4,yy*16+4);
+    end; else
+   if id=90 then
+    begin
+     drop.create(25,random(3)-1,xx*16+4,yy*16+4);
+    end; else
+   if id=91 then
+    begin
+     drop.create(25,random(3)-1,xx*16+4,yy*16+4);
+    end; else
+   if id=93 then
+    begin
+     drop.create(92,1,xx*16+4,yy*16+4);
+    end; else
+   if id=94 then
+    begin
+     drop.create(4,1,xx*16+4,yy*16+4);
+    end; else
+   if id=95 then
+    begin
+     drop.create(187,1,xx*16+4,yy*16+4);
+    end; else
+   if id=96 then
+    begin
+     drop.create(187,1,xx*16+4,yy*16+4);
+    end; else
+   if id=97 then
+    begin
+     drop.create(187,1,xx*16+4,yy*16+4);
+    end; else
+   if id=98 then
+    begin
+     drop.create(187,1,xx*16+4,yy*16+4);
+    end; else
+   if id=99 then
+    begin
+     drop.create(187,1,xx*16+4,yy*16+4);
+    end; else
+   if id=100 then
+    begin
+     drop.create(187,1,xx*16+4,yy*16+4);
+    end; else
+   if id=101 then
+    begin
+     drop.create(187,1,xx*16+4,yy*16+4);
+    end; else
+   if id=102 then
+    begin
+     chest.destroy(true, xx, yy);
+     drop.create(28,1,xx*16+4,yy*16+4);
+    end; else
+   if id=104 then
+    begin
+     destsign(getmapinfo(xx,yy));
+     drop.create(104,1,xx*16+4,yy*16+4);
+    end; else
+   if id=106 then
+    begin
+     setmap(0,xx,yy);
+     DestroyFurnace(xx, yy);
+    end; else
+   if id=107 then
+    begin
+     drop.create(108,1,xx*16+4,yy*16+4);
+    end; else
+   if id=111 then
+    begin
+     drop.create(214,random(4)+1,xx*16+4,yy*16+4);
+    end; else
+   if id=117 then
+    begin
+     drop.create(116,1,xx*16+4,yy*16+4);
+    end; else
+   if id=118 then
+    begin
+     drop.create(10,1,xx*16+4,yy*16+4);
+    end; else
+   if id=120 then
+    begin
+     drop.create(1,1,xx*16+4,yy*16+4);
+    end; else
+   if id=121 then
+    begin
+     setmap(0,xx,yy);
+     setmapinfo(0,xx,yy);
+    end; else
+   if id=122 then
+    begin
+     if getmapinfo(xx,yy)<3 then drop.create(217,random(2),xx*16+4,yy*16+4); else
+     if getmapinfo(xx,yy)=3 then begin drop.create(217,random(2),xx*16+4,yy*16+4); drop.create(218,1,xx*16+4,yy*16+4); end;
+     setmap(0,xx,yy);
+     setmapinfo(0,xx,yy);
+    end; else
+   if (id=123) or (id=124) then
+    begin
+     drop.create(221+(id-123),random(4),xx*16+4,yy*16+4);
+    end; else
+     begin
+      setmapinfo(0,xx,yy);
+      drop.create(id,1,xx*16+4,yy*16+4);
+     end;
+  end;
+
+ procedure decItem(invcur:integer);
+  begin
+   if gamemode<>1 then
+    begin
+     inv.setSum(inv.getSum(invcur)-1, invcur);
+     inv.fixNull(invcur);
+    end;
+  end;
+
+ //Возвращает true если блок небыл использован.
+ function useBlock(invcur, x, y:integer):boolean;
+  var
+   item, sum, block, info:integer;
+  begin
+   item:=inv.getItem(invcur);
+   sum:=inv.getSum(invcur);
+   block:=getMap(x, y);
+   info:=getMapInfo(x, y);
+
+   if (block=28) or (block=102) then
+    begin
+     if info<=MAX_CHEST then
+      OpenChestWindow(info);
+    end;
+   else
+   if block=29 then
+    OpenFastCraftWindow(1);
+   else
+   if block=79 then
+    begin
+     setMap(81, x, y);
+     setMap(82, x, y+1);
+    end;
+   else
+   if block=80 then
+    begin
+     setMap(81, x, y-1);
+     setMap(82, x, y);
+    end;
+   else
+   if block=81 then
+    begin
+     setMap(79, x, y);
+     setMap(80, x, y+1);
+    end;
+   else
+   if block=82 then
+    begin
+     setMap(79, x, y-1);
+     setMap(80, x, y);
+    end;
+   /*else
+   if block=104 then
+    keymode:=5;*/
+   else
+   if block=106 then
+    OpenFurnaceWindow(info);
+   else
+   if block=107 then
+    setMap(108, x, y);
+   else
+   if block=108 then
+    setMap(107, x, y);
+   else
+   if block=116 then
+    setMap(117, x, y);
+   else
+   if block=117 then
+    setMap(116, x, y);
+   else
+   if block=121 then
+    begin
+     if hunger<20 then
+      begin
+       hunger:=hunger+2;
+       info:=info-2;
+       if (info=14) or (info=2) then
+        info:=info-2;
+       if info<1 then
+        setMap(0, x, y);
+       else
+        setMapInfo(info, x, y);
+      end;
+    end;
+   else
+    useBlock:=true;
+
+   /*
+
+
+  if (getmap(curx,cury)=1) or (getmap(curx,cury)=2) or (getmap(curx,cury)=48) or (getmap(curx,cury)=74) then
+   begin
+    if (get_item(0, item)=1) and (get_tool(0, item)=6) and (sum>0) and (getmap(curx,cury-1)=0) then
+     begin
+      setmap(120,curx,cury);
+      inv.setSum(inv.getSum(invslot)-1, invslot);
+      inv.fixNull(invslot);
+     end;
+   end;
+    else
+  if (getmap(curx,cury)=77) or (getmap(curx,cury)=78) then
+   begin
+    if pl_world=0 then
+     sleep;
+    else
+     boom(4,100,curx,cury);
+   end;*/
+  end;
+
+ function useItem(invcur, x, y:integer):boolean;
+  var
+   item, sum, block, info:integer;
+  begin
+  if inv.isNull(invcur) then
+   begin
+    useItem:=true;
+    exit;
+   end;
+
+  item:=inv.getItem(invcur);
+   sum:=inv.getSum(invcur);
+   block:=getMap(x, y);
+   info:=getMapInfo(x, y);
+
+   if item=171 then
+    begin
+     if block=50 then
+      begin
+       inv.setItem(172, invcur);
+       setMap(0, x, y);
+      end;
+     else
+     if block=51 then
+      begin
+       inv.setItem(173, invcur);
+       setMap(0, x, y);
+      end;
+    end;
+   else
+   if item=220 then
+    usebonemeal(block);
+   else
+   if item=217 then
+    begin
+     if (block=120) and (getMap(x, y-1)=0) then
+      begin
+       setMap(122, x, y-1);
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=221 then
+    begin
+     if (block=120) and (getMap(x, y-1)=0) then
+      begin
+       setMap(123, x, y-1);
+       setMapInfo(1, x, y-1);
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=222 then
+    begin
+     if (block=120) and (getMap(x, y-1)=0) then
+      begin
+       setMap(124, x, y-1);
+       setMapInfo(1, x, y-1);
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=172 then
+    begin
+     if (block=0) then
+      begin
+       inv.setItem(171, invcur);
+       setMap(50, x, y);
+      end;
+    end;
+   else
+   if item=173 then
+    begin
+     if (block=0) then
+      begin
+       inv.setItem(171, invcur);
+       setMap(51, x, y);
+      end;
+    end;
+   else
+   if item=176 then
+    begin
+     if hunger<20 then
+      begin
+       hunger:=hunger+2;
+       if hunger>20 then
+        hunger:=20;
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=177 then
+    begin
+     if random(10)=random(10) then
+      create_mob(4, x*16, y*16);
+     decItem(invcur);
+    end;
+   else
+   if item=178 then
+    begin
+     if (block=0) and (getMap(x, y-1)=0) then
+      begin
+       setMap(81, x, y-1);
+       setMap(82, x, y);
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=179 then
+    begin
+     if (block=0) and (getMap(x+1, y)=0) then
+      begin
+       setMap(77, x, y);
+       setMap(78, x+1, y);
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=180 then
+    begin
+     if getBlockColl(block)=0 then
+      begin
+       create_mob(1, x*16, y*16);
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=181 then
+    begin
+     if getBlockColl( block)=0 then
+      begin
+       create_mob(2, x*16, y*16);
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=182 then
+    begin
+     if getBlockColl(block)=0 then
+      begin
+       create_mob(3, x*16, y*16);
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=185 then
+    begin
+     if hunger<20 then
+      begin
+       inv.setItem(184, invslot);
+       hunger:=hunger+6;
+       if hunger>20 then
+        hunger:=20;
+      end;
+    end;
+   else
+   if item=187 then
+    begin
+     if block=0 then
+      begin
+       setMap(95+random(7), x, y);
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=188 then
+    begin
+     if hunger<20 then
+      begin
+       hunger:=hunger+3;
+       if hunger>20 then
+        hunger:=20;
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=189 then
+    begin
+     if hunger<20 then
+      begin
+       hunger:=hunger+8;
+       if hunger>20 then
+        hunger:=20;
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=190 then
+    begin
+     if hunger<20 then
+      begin
+       hunger:=hunger+4;
+       if hunger>20 then
+        hunger:=20;
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=191 then
+    create_screenshot_png;
+   else
+   if item=192 then
+    create_screenshot_jpeg;
+   else
+   if item=193 then
+    create_screenshot_bmp;
+   else
+   if item=196 then
+    begin
+     if hunger<20 then
+      begin
+       hp:=hp-4;
+       hunger:=hunger+2;
+       if hunger>20 then
+        hunger:=20;
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=199 then
+    begin
+     if hunger<20 then
+      begin
+       hunger:=hunger+3;
+       if hunger>20 then
+        hunger:=20;
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=200 then
+    begin
+     if hunger<20 then
+      begin
+       hunger:=hunger+8;
+       if hunger>20 then
+        hunger:=20;
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=201 then
+    begin
+     if hunger<20 then
+      begin
+       hunger:=hunger+4;
+       if hunger>20 then
+        hunger:=20;
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=202 then
+    begin
+     if hp<20 then
+      begin
+       hp:=20;
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=203 then
+    begin
+     if hunger<20 then
+      begin
+       hunger:=hunger+2;
+       if hunger>20 then
+        hunger:=20;
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=204 then
+    begin
+     if hunger<20 then
+      begin
+       hunger:=hunger+6;
+       if hunger>20 then
+        hunger:=20;
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=205 then
+    begin
+     if getBlockColl(block)=0 then
+      begin
+       create_mob(4, x*16, y*16);
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=206 then
+    begin
+     if getBlockColl(block)=0 then
+      begin
+       create_mob(5, x*16, y*16);
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=208 then
+    begin
+     if getBlockColl(block)=0 then
+      begin
+       create_mob(6, x*16, y*16);
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=209 then
+    begin
+     if getBlockColl(block)=0 then
+      begin
+       create_mob(7, x*16, y*16);
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=213 then
+    begin
+     if getBlockColl(block)=0 then
+      begin
+       create_mob(8, x*16, y*16);
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=212 then
+    begin
+     if getBlockColl(block)=0 then
+      begin
+       create_mob(10, x*16, y*16);
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=210 then
+    begin
+     if hunger<20 then
+      begin
+       hunger:=hunger+2;
+       if hunger>20 then
+        hunger:=20;
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=211 then
+    begin
+     if hunger<20 then
+      begin
+       hunger:=hunger+5;
+       if hunger>20 then
+        hunger:=20;
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=219 then
+    begin
+     if hunger<20 then
+      begin
+       hunger:=hunger+5;
+       if hunger>20 then
+        hunger:=20;
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=153 then
+    begin
+     if block=10 then
+      begin
+       if searchportal(x , y)=true then
+        begin
+         genportal(x-1, y-4);
+         decItem(invcur);
+        end;
+       else
+       if searchportal(x-1, y)=true then
+        begin
+         genportal(x-2, y-4);
+         decItem(invcur);
+        end;
+      end;
+     else
+     if block=27 then
+      begin
+       setmapinfo(getrelativetimems/1000-(getrelativetimems/1000 div 100*100),curx,cury);
+       decItem(invcur);
+      end;
+    end;
+   else
+   if item=152 then
+    begin
+     if block=50 then
+      begin
+       fish:=true;
+       fish_time:=getrelativetimems;
+       fx:=curx;
+       fy:=cury;
+      end;
+    end;
+   else
+    useItem:=true;
+  end;
+
+procedure fluidLogic(x, y, ifbx, thenbx, ifby, thenby:integer);
+ var
+  block, blockXm1, blockXp1, blockYp1:integer;
+ begin
+  block:=getMap(x, y);
+  blockXm1:=getMap(x-1, y);
+  blockXp1:=getMap(x+1, y);
+  blockYp1:=getMap(x, y+1);
+
+  //Если внизу условный блок, то заменяем.
+  if blockYp1=ifby then
+   setMap(thenby, x, y+1);
+  else
+  //Если нижний блок можно уничтожить, то ставим туда копию
+  if getBlockSet(blockYp1) then
+   begin
+    destroy_block_0(blockYp1, x, y+1);
+    setMap(block, x, y+1);
+   end;
+  //Если ничего не можем, то пытаемся течь по сторонам
+  else
+   begin
+    if blockXm1=ifbx then
+     setMap(thenbx, x-1, y);
+    else
+    if getBlockSet(blockXm1) then
+     begin
+      destroy_block_1(blockXm1, x-1, y);
+      setMap(block, x-1, y);
+     end;
+
+    if blockXp1=ifbx then
+     setMap(thenbx, x+1, y);
+    else
+    if getBlockSet(blockXp1) then
+     begin
+      destroy_block_1(blockXp1, x+1, y);
+      setMap(block, x+1, y);
+     end;
+   end;
+ end;
+
+procedure updateBlock(x, y:integer);
+ const
+  GRASS_RND=128;
+  TORCH_RND=128;
+  SPAWN_RND=128;
+  SPAWN_RAD=128;
+  GENWOOD_RND=1024;
+  LIAN_RND=32;
+  CORN_RND=512;
+ var
+  plx, ply, block, light, info:integer;
+ begin
+  plx:=player.getX;
+  ply:=player.getY;
+  block:=getMap(x, y);
+  light:=getMapLight(x, y);
+  info:=getMapInfo(x, y);
+
+  if block=2 then
+   begin
+    //Трава разрастается при условии что освещение выше чем 3
+    if (getBlockSet(getMap(x, y-1))=false) or (light=0) then
+     setMap(1, x, y);
+    else
+    if light>3 then
+     begin
+      if (getMap(x-1, y)=1) and (getMap(x-1, y-1)=0) then
+       if random(GRASS_RND)=random(GRASS_RND) then
+        setMap(2, x-1, y);
+
+      if (getMap(x+1, y)=1) and (getMap(x+1, y-1)=0) then
+       if random(GRASS_RND)=random(GRASS_RND) then
+        setMap(2, x+1, y);
+     end;
+   end;
+  else
+  if block=7 then
+   begin
+    if getBlockSet(getMap(x, y+1)) then
+     begin
+      setMap(0, x, y);
+      setMap(7, x, y+1);
+     end;
+   end;
+  else
+  if block=8 then
+   begin
+    if getBlockSet(getMap(x, y+1)) then
+     begin
+      setMap(0, x, y);
+      setMap(8, x, y+1);
+     end;
+   end;
+  else
+  if block=26 then
+   begin
+    if random(TORCH_RND)=random(TORCH_RND) then
+     create_particle(2, x*16+4, y*16+4);
+   end;
+  else
+  if block=50 then
+   begin
+    fluidLogic(x, y, 51, 10, 51, 10);
+   end;
+  else
+  if block=51 then
+   begin
+    fluidLogic(x, y, 50, 5, 50, 3);
+   end;
+  else
+  if block=63 then
+   begin
+    if (light>7) or (getMap(x, y+1)=0) then
+     setmap(0, x, y);
+   end;
+  else
+  if block=74 then
+   begin
+    if getBlockSet(getMap(x, y-1))=false then
+     setMap(1, x, y);
+    else
+    if light>3 then
+     begin
+      if (getMap(x-1, y)=1) and (getMap(x-1, y-1)=0) then
+       if random(GRASS_RND)=random(GRASS_RND) then
+        setMap(74, x-1, y);
+
+      if (getMap(x+1, y)=1) and (getMap(x+1, y-1)=0) then
+       if random(GRASS_RND)=random(GRASS_RND) then
+        setMap(74, x+1, y);
+     end;
+   end;
+  else
+  if block=77 then
+   begin
+    if getmap(x+1, y)<>78 then
+     setMap(0, x, y);
+   end;
+  else
+  if block=78 then
+   begin
+    if getmap(x-1, y)<>77 then
+     setMap(0, x, y);
+   end;
+  else
+  if block=79 then
+   begin
+    if getmap( x, y+1)<>80 then
+     setMap(0, x, y);
+   end;
+  else
+  if block=80 then
+   begin
+    if getmap(x, y-1)<>79 then
+     setMap(0, x, y);
+   end;
+  else
+  if block=81 then
+   begin
+    if getmap(x, y+1)<>82 then
+     setMap(0, x, y);
+   end; else
+  if block=82 then
+   begin
+    if getmap(x, y-1)<>81 then
+     setmap(0, x, y);
+   end; else
+  if block=76 then
+   begin
+    if CollTwoObj(plx, ply, player.getW, player.getH, x*16-SPAWN_RAD, y*16-SPAWN_RAD, x*16+SPAWN_RAD, y*16+SPAWN_RAD) then
+     if random(SPAWN_RND)=random(SPAWN_RND) then
+      create_mob(getMapInfo(x, y), x*16,(y-2)*16);
+   end;
+  else
+  if block=52 then
+   begin
+    if random(GENWOOD_RND)=random(GENWOOD_RND) then
+     genwood1(x, y);
+   end;
+  else
+  if block=114 then
+   begin
+    if random(GENWOOD_RND)=random(GENWOOD_RND) then
+     genwood2(x, y);
+   end;
+  else
+  if block=115 then
+   begin
+    if random(GENWOOD_RND)=random(GENWOOD_RND) then
+     genwood3(x, y);
+   end;
+  else
+  if block=103 then
+   begin
+    if (getmap(x, y-1)=0) then
+     setmap(0, x, y);
+    else
+    if (getmap(x, y+1)=0) and (random(LIAN_RND)=random(LIAN_RND)) then
+     setmap(103, x, y+1);
+   end;
+  else
+  if block=105 then
+   begin
+    if random(TORCH_RND)=random(TORCH_RND) then
+     create_particle(4, x*16+4, y*16+4);
+   end;
+  else
+  if block=110 then
+   begin
+    if (getmap(x-1, y)=0) or (getmap(x+1, y)=0) or (getmap(x, y-1)=0) or (getmap(x, y+1)=0) then
+     setmap(0, x, y);
+   end;
+  else
+  if block=30 then
+   begin
+    if (random(GENWOOD_RND)=random(GENWOOD_RND)) and (getMap(x, y+2)<>30) then
+     setMap(30, x, y-1);
+    if (getMap(x, y+1)<>7) or (getMap(x, y+1)<>30) then
+     begin
+      setMap(0, x, y);
+      destroy_block_1(block, x, y);
+     end;
+   end; else
+  if block=65 then
+   begin
+    if (random(GENWOOD_RND)=random(GENWOOD_RND)) and (getMap(x, y+2)<>65) then
+     setMap(65, x, y-1);
+    if (getMap(x, y+1)=0) then
+     begin
+      setMap(0, x, y);
+      destroy_block_1(block, x, y);
+     end;
+   end;
+  else
+  if block=122 then
+   begin
+    if random(CORN_RND)=random(CORN_RND) then
+     info:=info+1;
+    if info>3 then
+     info:=3;
+    if getmap(x, y+1)<>120 then
+     setMap(0, x, y);
+    setMapInfo(info, x, y);
+   end; else
+  if block=123 then
+   begin
+    if random(CORN_RND)=random(CORN_RND) then
+     info:=info+1;
+    if info>9 then
+     info:=9;
+    if getmap(x, y+1)<>120 then
+     setMap(0, x, y);
+
+    if (info=0) and (getMap(x-1, y)=0) and (getBlockColl(getMap(x-1, y+1))>0) then
+     setmap(73, x-1, y);
+
+    if (getMap(x-1, y)=73) and (getMapinfo(x, y)<>9) then
+     info:=9;
+
+    setMapInfo(info, x, y);
+   end;
+  else
+  if block=124 then
+   begin
+    if random(CORN_RND)=random(CORN_RND) then
+     info:=info+1;
+    if info>9 then
+     info:=9;
+    if getmap(x, y+1)<>120 then
+     setMap(0, x, y);
+
+    if (info=0) and (getMap(x-1, y)=0) and (getBlockColl(getMap(x-1, y+1))>0) then
+     setmap(66, x-1, y);
+
+    if (getMap(x-1, y)=66) and (getMapinfo(x, y)<>9) then
+     info:=9;
+
+    setMapInfo(info, x, y);
+  end;
+  else
+  if block=27 then
+   begin
+    if info<>0 then
+     if getrelativetimems/1000-(getrelativetimems/1000 div 100*100)-info>3 then
+      boom(4, 100, x, y);
+   end;
+ end;
+
+end.

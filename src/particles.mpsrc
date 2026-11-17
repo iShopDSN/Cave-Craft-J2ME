@@ -1,0 +1,154 @@
+unit particles;
+
+interface
+ var
+  pr_1:array [0..7] of image;
+  pr_2:array [0..7] of image;
+  pr_3:array [0..7] of image;
+  pr_4:array [0..7] of image;
+  pr_5:array [0..7] of image;
+  pr_boom:array [0..15] of image;
+  bubble:image;
+  snow8:array [0..7] of image;//Снежинки 8x8 для типа 8 (инициализируются в CAVE.loadtexture)
+  gb_up_pa:integer;
+
+  s_particles:boolean;
+  max_particles:integer;
+
+ procedure create_particle(tp,ix,iy:integer);
+ procedure update_particle;
+ procedure draw_particle;
+
+implementation
+ uses vars,maps,particles_store;
+
+procedure create_particle(tp,ix,iy:integer);
+ var
+  i:integer;
+ begin
+  if s_particles=true then
+  for i:=0 to max_particles do
+   if get_particle_type(i)=0 then
+    begin
+     set_particle(i,tp,0,ix,iy);
+     exit;
+    end;
+ end;
+
+procedure null_particle(i:integer);
+ begin
+  set_particle(i,0,0,0,0);
+ end;
+
+procedure pr_ai_1(i,maxani:integer);
+ begin
+  set_particle_y(i,get_particle_y(i)-1);
+  set_particle_ani(i,get_particle_ani(i)+1);
+  if get_particle_ani(i)>maxani then null_particle(i);
+ end;
+
+procedure pr_ai_bubble(i:integer);
+ var
+  xx,yy:integer;
+ begin
+  set_particle_y(i,get_particle_y(i)-1);
+  xx:=get_particle_x(i) div 16;
+  yy:=get_particle_y(i) div 16;
+  if getmap(xx,yy)<>50 then null_particle(i);
+ end;
+
+procedure pr_ai_boom(i:integer);
+ begin
+  set_particle_ani(i,get_particle_ani(i)+1);
+  if get_particle_ani(i)>15 then null_particle(i);
+ end;
+
+//Снежинка: падает вниз с покачиванием, тает на блоке или за нижним краем экрана
+procedure pr_ai_snow(i:integer);
+ begin
+  set_particle_y(i,get_particle_y(i)+2);
+  set_particle_x(i,get_particle_x(i)+((get_particle_ani(i) mod 3)-1));
+  set_particle_ani(i,get_particle_ani(i)+1);
+  if get_particle_ani(i)>7 then set_particle_ani(i,0);
+  if getmap(get_particle_x(i) div 16, get_particle_y(i) div 16)<>0 then
+   null_particle(i)
+  else
+  if get_particle_y(i)>camy+getheight+16 then
+   null_particle(i);
+ end;
+
+procedure update_particle;
+ var
+  i:integer;
+ begin
+  if s_particles=true then
+   begin
+    for i:=0 to max_particles do
+     if get_particle_type(i)>0 then
+      begin
+       if get_particle_type(i)=1 then pr_ai_1(i,5); else
+       if get_particle_type(i)=2 then pr_ai_1(i,5); else
+       if get_particle_type(i)=3 then pr_ai_1(i,5); else
+       if get_particle_type(i)=4 then pr_ai_1(i,5); else
+       if get_particle_type(i)=5 then pr_ai_1(i,5); else
+       if get_particle_type(i)=6 then pr_ai_bubble(i); else
+       if get_particle_type(i)=7 then pr_ai_boom(i); else
+       if get_particle_type(i)=8 then pr_ai_snow(i); else
+        null_particle(i);
+      end;
+    gb_up_pa:=gb_up_pa+1;
+    if gb_up_pa>=2 then gb_up_pa:=0;
+   end;
+ end;
+
+procedure draw_particle;
+ var
+  i:integer;
+ begin
+  for i:=0 to max_particles do
+   if get_particle_type(i)>0 then
+   begin
+    if get_particle_type(i)=1 then
+     begin
+      if (get_particle_x(i)-camx>-8) and (get_particle_x(i)-camx<getwidth) and (get_particle_y(i)-camy>-8) and (get_particle_y(i)-camy<getheight) then
+      drawimage(pr_1[get_particle_ani(i)],get_particle_x(i)-camx,get_particle_y(i)-camy);
+     end; else
+    if get_particle_type(i)=2 then
+     begin
+      if (get_particle_x(i)-camx>-8) and (get_particle_x(i)-camx<getwidth) and (get_particle_y(i)-camy>-8) and (get_particle_y(i)-camy<getheight) then
+      drawimage(pr_2[get_particle_ani(i)],get_particle_x(i)-camx,get_particle_y(i)-camy);
+     end; else
+    if get_particle_type(i)=3 then
+     begin
+      if (get_particle_x(i)-camx>-8) and (get_particle_x(i)-camx<getwidth) and (get_particle_y(i)-camy>-8) and (get_particle_y(i)-camy<getheight) then
+      drawimage(pr_3[get_particle_ani(i)],get_particle_x(i)-camx,get_particle_y(i)-camy);
+     end; else
+    if get_particle_type(i)=4 then
+     begin
+      if (get_particle_x(i)-camx>-8) and (get_particle_x(i)-camx<getwidth) and (get_particle_y(i)-camy>-8) and (get_particle_y(i)-camy<getheight) then
+      drawimage(pr_4[get_particle_ani(i)],get_particle_x(i)-camx,get_particle_y(i)-camy);
+     end; else
+    if get_particle_type(i)=5 then
+     begin
+      if (get_particle_x(i)-camx>-8) and (get_particle_x(i)-camx<getwidth) and (get_particle_y(i)-camy>-8) and (get_particle_y(i)-camy<getheight) then
+      drawimage(pr_4[get_particle_ani(i)],get_particle_x(i)-camx,get_particle_y(i)-camy);
+     end; else
+    if get_particle_type(i)=6 then
+     begin
+      if (get_particle_x(i)-camx>-8) and (get_particle_x(i)-camx<getwidth) and (get_particle_y(i)-camy>-8) and (get_particle_y(i)-camy<getheight) then
+      drawimage(bubble,get_particle_x(i)-camx,get_particle_y(i)-camy);
+     end; else
+    if get_particle_type(i)=7 then
+     begin
+      if (get_particle_x(i)-camx>-32) and (get_particle_x(i)-camx<getwidth) and (get_particle_y(i)-camy>-32) and (get_particle_y(i)-camy<getheight) then
+      drawimage(pr_boom[get_particle_ani(i)],get_particle_x(i)-camx,get_particle_y(i)-camy);
+     end; else
+    if get_particle_type(i)=8 then
+     begin
+      if (get_particle_x(i)-camx>-8) and (get_particle_x(i)-camx<getwidth) and (get_particle_y(i)-camy>-8) and (get_particle_y(i)-camy<getheight) then
+      drawimage(snow8[get_particle_ani(i)],get_particle_x(i)-camx,get_particle_y(i)-camy);
+     end;
+   end;
+ end;
+
+end.

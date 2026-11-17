@@ -1,0 +1,859 @@
+unit invui;
+
+interface
+ procedure OpenFurnaceWindow(furid:integer);
+ procedure OpenFastCraftWindow(mode:integer);
+ procedure OpenChestWindow(n:integer;);
+ procedure OpenCreativeWindow;
+ procedure OpenPlayerInventory;
+ procedure DrawWindows;
+ function WindowKeyHanler:boolean;
+
+implementation
+ uses vars, CellUI, console, Canvas, items, utils, craft, furnace, func, items_store, player, keyboard;
+ const
+  WINDOW_PLAYER_INV=1;
+  WINDOW_DIV_ITEMS=2;
+  WINDOW_CEATIVE_INV=3;
+  WINDOW_CHEST_INV=4;
+  WINDOW_FASTCRAFT=5;
+  WINDOW_FURNACE=6;
+
+  INV_MODE_SELECT1=0;
+  INV_MODE_SELECT2=1;
+  INV_MODE_SELECT2_DIV=2;
+
+  MAX_CREATIVE_OFFSET=248;//32*8-8
+  MAX_FASTCRAFT_OFFSET=232;//24*10-8
+
+  WINDOW_INFO_INVMODE=0;
+  WINDOW_INFO_DIVRES=1;
+  WINDOW_INFO_FUR_ID=2;
+
+  WINDOW_INFO_DIV_ITEM=0;
+  WINDOW_INFO_DIV_SUM1=1;
+  WINDOW_INFO_DIV_SUM2=2;
+
+  WINDOW_INFO_FC_MODE=0;
+
+ var
+  InvWindowImg:image;
+  DivWindowImg, DivScrollImg:image;
+  CrWindowImg, CrScrollImg:image;
+  ChestWindowImg:image;
+  fcWindowImg, fcScrollImg, fcCanCraftImg:image;
+  furWindowImg, furFireImg, furProgressImg:image;
+
+ function calcScrollBar(scrollSize, buttonSize, maxEl, currentEl:integer):integer;
+  const
+   DivAccuracy=100000;
+  begin
+   if (currentEl=0) or (maxEl=0) then
+    calcScrollBar:=0;
+   else
+   if (currentEl<>maxEl) then
+    calcScrollBar:=DivAccuracy*(scrollSize-buttonSize)/maxEl*currentEl/DivAccuracy;
+   else
+    calcScrollBar:=scrollSize-buttonSize;
+  end;
+
+ procedure OpenFurnaceWindow(furid:integer);
+  var
+   i, j, id:integer;
+  begin
+   NewLayer;
+   SetWindowType(WINDOW_FURNACE);
+   SetCurActive(true, CUR_SELECT1);
+
+   SetWindowInfo(furid, WINDOW_INFO_FUR_ID);
+
+   if FindCurrentWindowsType=false then
+    begin
+     furWindowImg:=ld_tex('furnace.png','/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/','gui/');
+     furFireImg:=rotate_image_from_image(furWindowImg, 0, 166, 14, 14, 0);
+     furProgressImg:=rotate_image_from_image(furWindowImg, 14, 166, 24, 17, 0);
+     furWindowImg:=rotate_image_from_image(furWindowImg, 0, 0, 176, 166, 0);
+    end;
+
+   for j:=0 to 8 do
+    begin
+     initCell(CELL_TYPE_PLAYER_INV, id, 0, -1, 8+j*18, 8+i*18, true);
+     id:=id+1;
+    end;
+
+   for i:=1 to 3 do
+   for j:=0 to 8 do
+    begin
+     initCell(CELL_TYPE_PLAYER_INV, id, 0, -1, 8+j*18, 8+i*18+4, true);
+     id:=id+1;
+    end;
+
+   initCell(CELL_TYPE_FURNACE, FURNACE_IN, 0, furid, 56, 97, true);
+   initCell(CELL_TYPE_FURNACE, FURNACE_FUEL, 0, furid, 56, 133, true);
+   initCell(CELL_TYPE_FURNACE, FURNACE_OUT, 0, furid, 116, 115, true);
+  end;
+
+ procedure DrawFurnaceWindow(x, y:integer);
+  var
+   furid, i, time:integer;
+  begin
+   furid:=GetWindowInfo(WINDOW_INFO_FUR_ID);
+
+   DrawImage(furWindowImg, x, y);
+
+   time:=furnace.getTime;
+   if furnaceBurn(furid) then
+    begin
+     i:=calcScrollBar(14, 0, furnace.FuelTime(furid), furnace.endFuelTime(furid)-time);
+     debug('i: '+i+'; time: '+time+'; fueltime:'+furnace.FuelTime(furid)+'; c: '+(furnace.endFuelTime(furid)-time));
+     SetClip(x+56, y+130-i, 18, i);
+     DrawImage(furFireImg, x+56, y+116);
+
+     if itemBurn(furid) then
+      begin
+       i:=calcScrollBar(24, 0, furnace.ProgTime(furid), furnace.endProgTime(furid)-time);
+
+       SetClip(x+79, y+114, 24-i, 17);
+       DrawImage(furProgressImg, x+79, y+114);
+      end;
+
+     SetClip(0, 0, getWidth, getHeight);
+    end;
+
+  end;
+
+ procedure CloseFurnaceWindow;
+  var
+   nullimg:image;
+  begin
+   if FindCurrentWindowsType=false then
+    begin
+     furWindowImg:=nullimg;
+     furFireImg:=nullimg;
+     furProgressImg:=nullimg;
+    end;
+   DelLayer;
+  end;
+
+ procedure OpenFastCraftWindow(mode:integer);
+  var
+   i, j, id:integer;
+  begin
+   NewLayer;
+   SetWindowType(WINDOW_FASTCRAFT);
+   SetCurActive(true, CUR_SELECT1);
+
+   SetWindowInfo(mode, WINDOW_INFO_FC_MODE);
+
+   if FindCurrentWindowsType=false then
+    begin
+     fcWindowImg:=ld_tex('fastcraft.png','/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/','gui/');
+     fcScrollImg:=rotate_image_from_image(fcWindowImg, 0, 126, 12, 15, 0);
+     fcCanCraftImg:=rotate_image_from_image(fcWindowImg, 12, 126, 20, 18, 0);
+     fcWindowImg:=rotate_image_from_image(fcWindowImg, 0, 0, 176, 126, 0);
+    end;
+
+   for i:=0 to 2 do
+   for j:=0 to 7 do
+    begin
+     initCell(CELL_TYPE_FASTCRAFT, id, 0, -1, 8+j*18, 66+i*18, false);
+     id:=id+1;
+    end;
+  end;
+
+ procedure DrawFastCraftWindow(x, y:integer);
+  var
+   mode, craftid:integer;
+   i, j, id:integer;
+  begin
+   mode:=GetWindowInfo(WINDOW_INFO_FC_MODE);
+   craftid:=getCellID(GetCurIndex(GetCur))+GetOffset(0);//FIX IT! Indexes
+
+   DrawImage(fcWindowImg, x, y);
+   if canCreateCraft(craftid, mode) then
+    DrawImage(fcCanCraftImg, x+87, y+26);
+
+   for i:=0 to 1 do
+   for j:=0 to 1 do
+    begin
+     drawItem(getCraftInItem(craftid, id), getCraftInSum(craftid, id), x+52+j*18, y+17+i*18, true);
+     id:=id+1;
+    end;
+
+   drawItem(getCraftOutItem(craftid), getCraftOutSum(craftid), x+108, y+27, true);
+
+   i:=calcScrollBar(52, getImageHeight(fcScrollImg), MAX_FASTCRAFT_OFFSET, getOffset(0));
+   drawimage(fcScrollImg, x+156, y+66+i);
+  end;
+
+ procedure CloseFastCraftWindow;
+  var
+   nullimg:image;
+  begin
+   if FindCurrentWindowsType=false then
+    begin
+     fcWindowImg:=nullimg;
+     fcScrollImg:=nullimg;
+     fcCanCraftImg:=nullimg;
+    end;
+   DelLayer;
+  end;
+
+ procedure FindFastCraftUD(n:integer;);
+  var
+   old_cur, offset:integer;
+  begin
+   old_cur:=GetCurIndex(GetCur);
+   offset:=getOffset(0);
+
+   if n<0 then
+    ShiftCurrentCur(FIND_CELL_UP);
+   if n>0 then
+    ShiftCurrentCur(FIND_CELL_DOWN);
+
+   if old_cur=GetCurIndex(GetCur) then
+    begin
+     if n<0 then
+      begin
+       offset:=offset-8;
+       if offset<0 then
+        offset:=0;
+      end;
+     else
+     if n>0 then
+      begin
+       offset:=offset+8;
+       if offset>MAX_FASTCRAFT_OFFSET then
+        offset:=MAX_FASTCRAFT_OFFSET;
+      end;
+    end;
+
+   SetOffset(offset, 0);
+  end;
+
+ procedure OpenChestWindow(n:integer;);
+  var
+   i, j, id:integer;
+  begin
+   NewLayer;
+   SetWindowType(WINDOW_CHEST_INV);
+   SetCurActive(true, CUR_SELECT1);
+
+   if FindCurrentWindowsType=false then
+    begin
+     ChestWindowImg:=ld_tex('container.png','/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/','gui/');
+    end;
+
+   for j:=0 to 8 do
+    begin
+     initCell(CELL_TYPE_PLAYER_INV, id, 0, -1, 8+j*18, 8+i*18, true);
+     id:=id+1;
+    end;
+
+   for i:=1 to 3 do
+   for j:=0 to 8 do
+    begin
+     initCell(CELL_TYPE_PLAYER_INV, id, 0, -1, 8+j*18, 8+i*18+4, true);
+     id:=id+1;
+    end;
+
+   id:=0;
+   for i:=0 to 2 do
+   for j:=0 to 8 do
+    begin
+     initCell(CELL_TYPE_CHEST, id, 0, n, 8+j*18, 88+i*18, true);
+     id:=id+1;
+    end;
+  end;
+
+ procedure CloseChestWindow;
+  var
+   nullimg:image;
+  begin
+   if FindCurrentWindowsType=false then
+    begin
+     ChestWindowImg:=nullimg;
+    end;
+   DelLayer;
+  end;
+
+ procedure OpenCreativeWindow;
+  var
+   i, j, id:integer;
+  begin
+   NewLayer;
+   SetWindowType(WINDOW_CEATIVE_INV);
+   SetCurActive(true, CUR_SELECT1);
+
+   if FindCurrentWindowsType=false then
+    begin
+     CrWindowImg:=ld_tex('creative.png','/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/','gui/');
+     CrScrollImg:=rotate_image_from_image(CrWindowImg, 0, 108, 12, 15, 0);
+     CrWindowImg:=rotate_image_from_image(CrWindowImg, 0, 0, 176, 108, 0);
+    end;
+
+   for j:=0 to 8 do
+    begin
+     initCell(CELL_TYPE_PLAYER_INV, id, 0, -1, 8+j*18, 8+i*18, true);
+     id:=id+1;
+    end;
+
+   id:=0;
+   for i:=0 to 3 do
+   for j:=0 to 7 do
+    begin
+     initCell(CELL_TYPE_CREWATIVE_INV, id, 1, -1, 8+j*18, 30+i*18, false);
+     id:=id+1;
+    end;
+  end;
+
+ procedure DrawCreativeWindow(x, y:integer;);
+  var
+   scroll, i:integer;
+  begin
+   DrawImage(CrWindowImg, x, y);
+   scroll:=getOffset(1);
+   i:=calcScrollBar(70, getImageHeight(CrScrollImg), MAX_CREATIVE_OFFSET, scroll);
+   drawimage(CrScrollImg, x+156, y+30+i);
+  end;
+
+ procedure FindCeativeUD(n:integer;);
+  var
+   old_cur, offset:integer;
+  begin
+   old_cur:=GetCurIndex(GetCur);
+   offset:=getOffset(1);
+
+   if n<0 then
+    ShiftCurrentCur(FIND_CELL_UP);
+   if n>0 then
+    ShiftCurrentCur(FIND_CELL_DOWN);
+
+   if old_cur=GetCurIndex(GetCur) then
+    begin
+     if n<0 then
+      begin
+       offset:=offset-8;
+       if offset<0 then
+        offset:=0;
+      end;
+     else
+     if n>0 then
+      begin
+       offset:=offset+8;
+       if offset>MAX_CREATIVE_OFFSET then
+        offset:=MAX_CREATIVE_OFFSET;
+      end;
+    end;
+
+   SetOffset(offset, 1);
+  end;
+
+ procedure CloseCreativeWindow;
+  var
+   nullimg:image;
+  begin
+   if FindCurrentWindowsType=false then
+    begin
+     CrWindowImg:=nullimg;
+     CrScrollImg:=nullimg;
+    end;
+   DelLayer;
+  end;
+
+ procedure OpenDivWindow;
+  var
+   item, sum:integer;
+  begin
+   debug('Open Div Window');
+   item:=getItem(GetCurIndex(GetCur));
+   sum:=getSum(GetCurIndex(GetCur));
+
+   NewLayer;
+   SetWindowType(WINDOW_DIV_ITEMS);
+
+   if FindCurrentWindowsType=false then
+    begin
+     DivWindowImg:=ld_tex('partition.png','/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/','gui/');
+     DivScrollImg:=rotate_image_from_image(DivWindowImg, 0, 50, 15, 12, 0);
+     DivWindowImg:=rotate_image_from_image(DivWindowImg, 0, 0, 88, 50, 0);
+    end;
+
+   SetWindowInfo(item, WINDOW_INFO_DIV_ITEM);
+   SetWindowInfo(sum, WINDOW_INFO_DIV_SUM1);
+  end;
+
+ procedure DivScroll(pp:integer);
+  var
+   sum1, sum2:integer;
+  begin
+   sum1:=GetWindowInfo(WINDOW_INFO_DIV_SUM1);
+   sum2:=GetWindowInfo(WINDOW_INFO_DIV_SUM2);
+
+   sum2:=sum2+pp;
+   if sum2<0 then
+    sum2:=0;
+   if sum2>sum1 then
+    sum2:=sum1;
+
+   SetWindowInfo(sum2, WINDOW_INFO_DIV_SUM2);
+  end;
+
+ procedure DrawDivWindow(x, y:integer);
+  var
+   i, item, sum1, sum2:integer;
+  begin
+   DrawImage(DivWindowImg, x, y);
+
+   item:=GetWindowInfo(WINDOW_INFO_DIV_ITEM);
+   sum1:=GetWindowInfo(WINDOW_INFO_DIV_SUM1);
+   sum2:=GetWindowInfo(WINDOW_INFO_DIV_SUM2);
+
+   drawItem(item, (sum1-sum2), x+8, y+8, true);
+   drawItem(item, sum2, x+64, y+8, true);
+
+   i:=calcScrollBar(72, getImageWidth(DivScrollImg), sum1, sum2);
+
+   drawimage(DivScrollImg, x+8+i, y+30);
+  end;
+
+ procedure CloseDivWindow(return_val:boolean);
+  var
+   res:integer;
+   nullimg:image;
+  begin
+   debug('Close Div Window');
+   res:=GetWindowInfo(WINDOW_INFO_DIV_SUM2);
+   //Если таких окон нет, то чистим память
+   if FindCurrentWindowsType=false then
+    begin
+     DivWindowImg:=nullimg;
+     DivScrollImg:=nullimg;
+    end;
+   DelLayer;
+   SetWindowInfo(res, WINDOW_INFO_DIVRES);
+
+   if return_val then
+    begin
+     SetCur(CUR_SELECT2);
+     SetCurActive(true, CUR_SELECT2);
+     SetCurIndex(GetCurIndex(CUR_SELECT1), CUR_SELECT2);
+     SetWindowInfo(INV_MODE_SELECT2_DIV, WINDOW_INFO_INVMODE);
+    end;
+  end;
+
+ procedure OpenPlayerInventory;
+  var
+   i, j, id:integer;
+  begin
+   NewLayer;
+   SetWindowType(WINDOW_PLAYER_INV);
+   SetCurActive(true, CUR_SELECT1);
+
+   //Если таких окон нет, то загружаем графику
+   if FindCurrentWindowsType=false then
+    begin
+     InvWindowImg:=ld_tex('inventory.png','/'+sd+'/cavecraft/texturepacks/'+tex_pack+'/','gui/');
+    end;
+
+   for j:=0 to 8 do
+    begin
+     initCell(CELL_TYPE_PLAYER_INV, id, 0, -1, 8+j*18, 8+i*18, true);
+     id:=id+1;
+    end;
+
+   for i:=1 to 3 do
+   for j:=0 to 8 do
+    begin
+     initCell(CELL_TYPE_PLAYER_INV, id, 0, -1, 8+j*18, 8+i*18+4, true);
+     id:=id+1;
+    end;
+  end;
+
+ procedure ClosePlayerInventory;
+  var
+   nullimg:image;
+  begin
+   debug('Close Player Inventory');
+   //Если таких окон нет, то чистим память
+   if FindCurrentWindowsType=false then
+    begin
+     InvWindowImg:=nullimg;
+    end;
+   DelLayer;
+  end;
+
+ procedure DrawWindows;
+  var
+   max:integer;
+   i, wtype, x, y:integer;
+  begin
+   max:=CellLayer;
+   for i:=0 to max do
+    begin
+     setCellLayer(i);
+     wtype:=GetWindowType;
+     if wtype=WINDOW_PLAYER_INV then
+      begin
+       x:=getWidth/2-getImageWidth(InvWindowImg)/2;
+       y:=getHeight/2-getImageHeight(InvWindowImg)/2;
+       DrawImage(InvWindowImg, x, y);
+      end;
+     else
+     if wtype=WINDOW_DIV_ITEMS then
+      begin
+       x:=getWidth/2-getImageWidth(DivWindowImg)/2;
+       y:=getHeight/2-getImageHeight(DivWindowImg)/2;
+       DrawDivWindow(x, y);
+      end;
+     else
+     if wtype=WINDOW_CEATIVE_INV then
+      begin
+       x:=getWidth/2-getImageWidth(CrWindowImg)/2;
+       y:=getHeight/2-getImageHeight(CrWindowImg)/2;
+       DrawCreativeWindow(x, y);
+      end;
+     else
+     if wtype=WINDOW_CHEST_INV then
+      begin
+       x:=getWidth/2-getImageWidth(ChestWindowImg)/2;
+       y:=getHeight/2-getImageHeight(ChestWindowImg)/2;
+       DrawImage(ChestWindowImg, x, y);
+      end;
+     else
+     if wtype=WINDOW_FASTCRAFT then
+      begin
+       x:=getWidth/2-getImageWidth(fcWindowImg)/2;
+       y:=getHeight/2-getImageHeight(fcWindowImg)/2;
+       DrawFastCraftWindow(x, y);
+      end;
+     else
+     if wtype=WINDOW_FURNACE then
+      begin
+       x:=getWidth/2-getImageWidth(furWindowImg)/2;
+       y:=getHeight/2-getImageHeight(furWindowImg)/2;
+       DrawFurnaceWindow(x, y);
+      end;
+     DrawCellLayer(i, x, y);
+     DrawCursors(i, x, y);
+    end;
+  end;
+
+ procedure OpSwapItems(Idx1, Idx2:integer);
+  var
+   tmp_item, tmp_sum:integer;
+  begin
+   tmp_item:=getItem(Idx1);
+   tmp_sum:=getSum(Idx1);
+
+   setItem(getItem(Idx2), Idx1);
+   setSum(getSum(Idx2), Idx1);
+
+   setItem(tmp_item, Idx2);
+   setSum(tmp_sum, Idx2);
+  end;
+
+ function OpAddItems(Idx1, Idx2:integer):boolean;
+  var
+   tmp_item1, tmp_sum1:integer;
+   tmp_item2, tmp_sum2:integer;
+   fresult:boolean;
+  begin
+   tmp_item1:=GetItem(Idx1);
+   tmp_sum1:=GetSum(Idx1);
+   tmp_item2:=GetItem(Idx2);
+   tmp_sum2:=GetSum(Idx2);
+   fresult:=true;
+
+   if (tmp_item1=tmp_item2) and (Idx1<>Idx2) then
+    if tmp_sum2<getItemMax(tmp_item2) then
+     begin
+      tmp_sum2:=tmp_sum2+tmp_sum1;
+      tmp_sum1:=0;
+
+      if tmp_sum2>getItemMax(tmp_item2) then
+       begin
+        tmp_sum1:=tmp_sum2-getItemMax(tmp_item2);
+        tmp_sum2:=tmp_sum2-tmp_sum1;
+       end;
+
+      if tmp_sum1<=0 then
+       tmp_item1:=0;
+
+      fresult:=false;
+     end;
+
+   SetItem(tmp_item1, Idx1);
+   SetSum(tmp_sum1, Idx1);
+   SetItem(tmp_item2, Idx2);
+   SetSum(tmp_sum2, Idx2);
+   OpAddItems:=fresult;
+  end;
+
+ procedure SetActiveCursor(n:integer;);
+  var
+   n2:integer;
+  begin
+   if n=CUR_SELECT1 then
+    n2:=CUR_SELECT2;
+   else
+    n2:=CUR_SELECT1;
+
+   SetCur(n);
+   SetCurActive(true, n);
+   SetCurIndex(GetCurIndex(n2), n);
+  end;
+
+ procedure decItem(curidx:integer);
+  begin
+   SetSum(GetSum(curidx)-1, curidx);
+   fixNullCell(curidx);
+  end;
+
+ procedure HandlerSelect2Div;
+  var
+   idx1, idx2:integer;
+  begin
+   idx1:=GetCurIndex(CUR_SELECT1);
+   idx2:=GetCurIndex(CUR_SELECT2);
+
+   if GetItem(idx2)=0 then
+    begin
+     SetItem(GetItem(idx1), idx2);
+     SetSum(GetWindowInfo(WINDOW_INFO_DIVRES), idx2);
+
+     SetSum(GetSum(idx1)-GetSum(idx2), idx1);
+     fixNullCell(idx1);
+    end;
+  end;
+
+ procedure Select;
+  var
+   mode:integer;
+  begin
+   mode:=GetWindowInfo(WINDOW_INFO_INVMODE);
+
+   //Нажали кнопку - выбрали первый элемент
+   if mode=INV_MODE_SELECT1 then
+    begin
+     //Активируем второй курсор и ставим его над первым курсором
+     SetActiveCursor(CUR_SELECT2);
+     SetWindowInfo(INV_MODE_SELECT2, WINDOW_INFO_INVMODE);
+    end;
+   else
+   //Нажали кнопку - выбрали второй элемент, произвели сложение и переходим к режиму выбора первого элемента.
+   if mode=INV_MODE_SELECT2 then
+    begin
+     //Складывваем предметы курсора 1 и курсора 2
+     if OpAddItems(GetCurIndex(CUR_SELECT1), GetCurIndex(CUR_SELECT2)) then
+      OpSwapItems(GetCurIndex(CUR_SELECT1), GetCurIndex(CUR_SELECT2));
+     //Передаём управление первому курсору
+     SetActiveCursor(CUR_SELECT1);
+     SetCurActive(false, CUR_SELECT2);
+     SetWindowInfo(INV_MODE_SELECT1, WINDOW_INFO_INVMODE);
+    end;
+   else
+   if mode=INV_MODE_SELECT2_DIV then
+    begin
+     HandlerSelect2Div;
+     SetActiveCursor(CUR_SELECT1);
+     SetCurActive(false, CUR_SELECT2);
+     SetWindowInfo(INV_MODE_SELECT1, WINDOW_INFO_INVMODE);
+    end;
+  end;
+
+ function CanDivItem:boolean;
+  begin
+   if getItemDiv(getItem(GetCurIndex(GetCur))) then
+   if (GetCur=CUR_SELECT1) and (getSum(GetCurIndex(GetCur))>0) then
+    CanDivItem:=true;
+  end;
+
+ procedure StdCellKeyHandler;
+  begin
+   if clickedKey(KEY_WIN_SELECT) then
+    SetTimer(1000, T_KEY_DIVITEM);
+
+   if pressedKey(KEY_WIN_SELECT) then
+    begin
+     if GetTimer(T_KEY_DIVITEM)=TIMER_OK then
+      begin
+       if CanDivItem then
+        OpenDivWindow;
+       ResetTimer(T_KEY_DIVITEM);
+      end;
+    end;
+   else
+    begin
+     if GetTimer(T_KEY_DIVITEM)>TIMER_OK then
+      begin
+       Select;
+       ResetTimer(T_KEY_DIVITEM);
+      end;
+    end;
+  end;
+
+ procedure keyDrop;
+  var
+   item, curidx:integer;
+  begin
+   curidx:=GetCurIndex(GetCur);
+   item:=getItem(curidx);
+
+   if clickedKey(KEY_WIN_DROP) then
+    SetTimer(1000, T_KEY_DROPITEM);
+
+   if pressedKey(KEY_WIN_DROP) then
+    begin
+     if GetTimer(T_KEY_DROPITEM)=TIMER_OK then
+      begin
+       player.dropItem(item, GetSum(curidx));
+       SetItem(0, curidx);
+       SetSum(0, curidx);
+       ResetTimer(T_KEY_DROPITEM);
+      end;
+    end;
+   else
+    begin
+     if GetTimer(T_KEY_DROPITEM)>TIMER_OK then
+      begin
+       if getItemDiv(item) then
+        begin
+         player.dropItem(item, 1);
+         decItem(curidx);
+        end;
+       ResetTimer(T_KEY_DROPITEM);
+      end;
+    end;
+  end;
+
+ function WindowKeyHanler:boolean;
+  var
+   WinType:integer;
+   craftid, mode:integer;
+  begin
+   WinType:=GetWindowType;
+   if WinType=WINDOW_PLAYER_INV then
+    begin
+     if clickedKey(KEY_WIN_UP) then
+      ShiftCurrentCur(FIND_CELL_UP);
+     if clickedKey(KEY_WIN_DOWN) then
+      ShiftCurrentCur(FIND_CELL_DOWN);
+     if clickedKey(KEY_WIN_LEFT) then
+      ShiftCurrentCur(FIND_CELL_LEFT);
+     if clickedKey(KEY_WIN_RIGHT) then
+      ShiftCurrentCur(FIND_CELL_RIGHT);
+
+     StdCellKeyHandler;
+     keyDrop;
+
+     if clickedKey(KEY_WIN_EXIT) then
+      ClosePlayerInventory;
+
+     if clickedKey(KEY_WIN_ALT) then
+      begin
+       ClosePlayerInventory;
+       OpenFastCraftWindow(0);
+      end;
+    end;
+   else
+   if WinType=WINDOW_DIV_ITEMS then
+    begin
+     if clickedKey(KEY_WIN_LEFT) then
+      DivScroll(-1);
+     if clickedKey(KEY_WIN_RIGHT) then
+      DivScroll(1);
+
+     if clickedKey(KEY_WIN_SELECT) then
+      CloseDivWindow(true);
+
+     if clickedKey(KEY_WIN_EXIT) then
+      CloseDivWindow(false);
+    end;
+   else
+   if WinType=WINDOW_CEATIVE_INV then
+    begin
+     if clickedKey(KEY_WIN_UP) then
+      FindCeativeUD(-1);
+     if clickedKey(KEY_WIN_DOWN) then
+      FindCeativeUD(1);
+     if clickedKey(KEY_WIN_LEFT) then
+      ShiftCurrentCur(FIND_CELL_LEFT);
+     if clickedKey(KEY_WIN_RIGHT) then
+      ShiftCurrentCur(FIND_CELL_RIGHT);
+
+     StdCellKeyHandler;
+     keyDrop;
+
+     if clickedKey(KEY_WIN_EXIT) then
+      CloseCreativeWindow;
+    end;
+   else
+   if WinType=WINDOW_CHEST_INV then
+    begin
+     if clickedKey(KEY_WIN_UP) then
+      ShiftCurrentCur(FIND_CELL_UP);
+     if clickedKey(KEY_WIN_DOWN) then
+      ShiftCurrentCur(FIND_CELL_DOWN);
+     if clickedKey(KEY_WIN_LEFT) then
+      ShiftCurrentCur(FIND_CELL_LEFT);
+     if clickedKey(KEY_WIN_RIGHT) then
+      ShiftCurrentCur(FIND_CELL_RIGHT);
+
+     StdCellKeyHandler;
+     keyDrop;
+
+     if clickedKey(KEY_WIN_EXIT) then
+      CloseChestWindow;
+    end;
+   else
+   if WinType=WINDOW_FASTCRAFT then
+    begin
+     if clickedKey(KEY_WIN_UP) then
+      FindFastCraftUD(-1);
+     if clickedKey(KEY_WIN_DOWN) then
+      FindFastCraftUD(1);
+     if clickedKey(KEY_WIN_LEFT) then
+      ShiftCurrentCur(FIND_CELL_LEFT);
+     if clickedKey(KEY_WIN_RIGHT) then
+      ShiftCurrentCur(FIND_CELL_RIGHT);
+
+     if clickedKey(KEY_WIN_SELECT) then
+      begin
+       mode:=GetWindowInfo(WINDOW_INFO_FC_MODE);
+       craftid:=getCellID(GetCurIndex(GetCur))+GetOffset(0);
+       createCraft(craftid, mode);
+      end;
+
+      if clickedKey(KEY_WIN_ALT) then
+       begin
+        CloseFastCraftWindow;
+        OpenPlayerInventory;
+       end;
+
+      if clickedKey(KEY_WIN_EXIT) then
+       CloseFastCraftWindow;
+    end;
+   else
+   if WinType=WINDOW_FURNACE then
+    begin
+     if clickedKey(KEY_WIN_UP) then
+      ShiftCurrentCur(FIND_CELL_UP);
+     if clickedKey(KEY_WIN_DOWN) then
+      ShiftCurrentCur(FIND_CELL_DOWN);
+     if clickedKey(KEY_WIN_LEFT) then
+      ShiftCurrentCur(FIND_CELL_LEFT);
+     if clickedKey(KEY_WIN_RIGHT) then
+      ShiftCurrentCur(FIND_CELL_RIGHT);
+
+     StdCellKeyHandler;
+     keyDrop;
+
+     if clickedKey(KEY_WIN_EXIT) then
+      CloseFurnaceWindow;
+    end;
+   else
+    WindowKeyHanler:=true;
+  end;
+
+end.
